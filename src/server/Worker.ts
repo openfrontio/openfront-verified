@@ -26,8 +26,17 @@ import { GameManager } from "./GameManager";
 import { getUserMe, verifyClientToken } from "./jwt";
 import { logger } from "./Logger";
 
+import { verifyMessage } from "viem";
 import { assertNever } from "../core/Util";
+import { getConfiguredGameServer, getDerivedServerAddress } from "./Onchain";
 import { PrivilegeRefresher } from "./PrivilegeRefresher";
+import {
+  getLinkedAddress,
+  issueNonce,
+  setLinkedAddress,
+  unlinkAddress,
+  validateAndConsumeNonce,
+} from "./WalletLinking";
 import { initWorkerMetrics } from "./WorkerMetrics";
 
 const config = getServerConfigFromServer();
@@ -47,6 +56,31 @@ export async function startWorker() {
   const wss = new WebSocketServer({ server });
 
   const gm = new GameManager(config, log);
+  // On-chain preflight: if envs present, verify contract's gameServer matches derived address
+  (async () => {
+    try {
+      const configured = await getConfiguredGameServer();
+      const derived = getDerivedServerAddress();
+      if (configured && derived) {
+        if (configured.toLowerCase() !== derived.toLowerCase()) {
+          log.error(`On-chain preflight: contract gameServer mismatch`, {
+            configured,
+            derived,
+          });
+        } else {
+          log.info(`On-chain preflight: contract gameServer ok`, {
+            gameServer: configured,
+          });
+        }
+      } else {
+        log.info(`On-chain preflight: skipping (missing contract or mnemonic)`);
+      }
+    } catch (e) {
+      log.error(`On-chain preflight error`, {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  })();
 
   if (config.otelEnabled()) {
     initWorkerMetrics(gm);
@@ -93,6 +127,68 @@ export async function startWorker() {
       max: 20, // 20 requests per IP per second
     }),
   );
+
+  // Auth helper to get persistentId from token (reuses existing verification)
+  async function requireAuth(req: Request): Promise<string | null> {
+    const auth = req.headers["authorization"];
+    if (typeof auth !== "string" || !auth.startsWith("Bearer ")) return null;
+    const token = auth.slice("Bearer ".length);
+    const result = await verifyClientToken(token, config);
+    if (result === false) return null;
+    return result.persistentId;
+  }
+
+  // Wallet linking endpoints
+  app.get("/api/wallet/nonce", async (req, res) => {
+    const pid = await requireAuth(req);
+    if (!pid) return res.status(401).json({ error: "unauthorized" });
+    const rec = await issueNonce(pid);
+    res.json({ nonce: rec.nonce, expiresAt: rec.expiresAt });
+  });
+
+  app.get("/api/wallet/me", async (req, res) => {
+    const pid = await requireAuth(req);
+    if (!pid) return res.status(401).json({ error: "unauthorized" });
+    const addr = await getLinkedAddress(pid);
+    res.json({ address: addr });
+  });
+
+  app.post("/api/wallet/link", async (req, res) => {
+    const pid = await requireAuth(req);
+    if (!pid) return res.status(401).json({ error: "unauthorized" });
+    const { address, message, signature, nonce } = req.body ?? {};
+    if (
+      typeof address !== "string" ||
+      typeof message !== "string" ||
+      typeof signature !== "string" ||
+      typeof nonce !== "string"
+    ) {
+      return res.status(400).json({ error: "invalid body" });
+    }
+    // Basic message binding: must include the persistentId
+    if (!message.includes(pid) || !validateAndConsumeNonce(pid, nonce)) {
+      return res.status(400).json({ error: "invalid nonce or message" });
+    }
+    try {
+      const ok = await verifyMessage({
+        address: address as `0x${string}`,
+        message,
+        signature: signature as `0x${string}`,
+      });
+      if (!ok) return res.status(400).json({ error: "bad signature" });
+      await setLinkedAddress(pid, address);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(400).json({ error: String(e) });
+    }
+  });
+
+  app.delete("/api/wallet/link", async (req, res) => {
+    const pid = await requireAuth(req);
+    if (!pid) return res.status(401).json({ error: "unauthorized" });
+    await unlinkAddress(pid);
+    res.json({ success: true });
+  });
 
   app.post("/api/create_game/:id", async (req, res) => {
     const id = req.params.id;

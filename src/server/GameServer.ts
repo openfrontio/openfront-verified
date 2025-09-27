@@ -27,7 +27,7 @@ import { Client } from "./Client";
 import {
   declareWinnerOnChain,
   isLobbyOnChain,
-  startGameOnChain,
+  startGameOnChainAndConfirm,
 } from "./Onchain";
 export enum GamePhase {
   Lobby = "LOBBY",
@@ -392,54 +392,55 @@ export class GameServer {
     if (this._hasStarted) {
       return;
     }
-    this._hasStarted = true;
-    this._startTime = Date.now();
-    // Set last ping to start so we don't immediately stop the game
-    // if no client connects/pings.
-    this.lastPingUpdate = Date.now();
-
-    const result = GameStartInfoSchema.safeParse({
-      gameID: this.id,
-      config: this.gameConfig,
-      players: this.activeClients.map((c) => ({
-        username: c.username,
-        clientID: c.clientID,
-        cosmetics: c.cosmetics,
-      })),
-    });
-    if (!result.success) {
-      const error = z.prettifyError(result.error);
-      this.log.error("Error parsing game start info", { message: error });
-      return;
-    }
-    this.gameStartInfo = result.data satisfies GameStartInfo;
-
-    this.endTurnIntervalID = setInterval(
-      () => this.endTurn(),
-      this.config.turnIntervalMs(),
-    );
-    this.activeClients.forEach((c) => {
-      this.log.info("sending start message", {
-        clientID: c.clientID,
-        persistentID: c.persistentID,
-      });
-      this.sendStartGameMsg(c.ws, 0);
-    });
-
-    // Fire-and-forget: start on-chain lobby if it exists
     (async () => {
       try {
         const lobbyId = this.id;
         const onChain = await isLobbyOnChain(lobbyId);
-        if (!onChain) return;
-        const hash = await startGameOnChain(lobbyId);
-        if (hash === null) {
-          this.log.error("Failed to start on-chain game", { gameID: lobbyId });
-        } else {
-          this.log.info("Started on-chain game", { gameID: lobbyId, tx: hash });
+        if (onChain) {
+          const ok = await startGameOnChainAndConfirm(lobbyId);
+          if (!ok) {
+            this.log.error(
+              "On-chain start failed; not starting in-memory game",
+              { gameID: lobbyId },
+            );
+            return;
+          }
+          this.log.info("On-chain start confirmed", { gameID: lobbyId });
         }
+
+        this._hasStarted = true;
+        this._startTime = Date.now();
+        this.lastPingUpdate = Date.now();
+
+        const result = GameStartInfoSchema.safeParse({
+          gameID: this.id,
+          config: this.gameConfig,
+          players: this.activeClients.map((c) => ({
+            username: c.username,
+            clientID: c.clientID,
+            cosmetics: c.cosmetics,
+          })),
+        });
+        if (!result.success) {
+          const error = z.prettifyError(result.error);
+          this.log.error("Error parsing game start info", { message: error });
+          return;
+        }
+        this.gameStartInfo = result.data satisfies GameStartInfo;
+
+        this.endTurnIntervalID = setInterval(
+          () => this.endTurn(),
+          this.config.turnIntervalMs(),
+        );
+        this.activeClients.forEach((c) => {
+          this.log.info("sending start message", {
+            clientID: c.clientID,
+            persistentID: c.persistentID,
+          });
+          this.sendStartGameMsg(c.ws, 0);
+        });
       } catch (e) {
-        this.log.error("startGameOnChain error", {
+        this.log.error("startGame flow error", {
           error: e instanceof Error ? e.message : String(e),
         });
       }

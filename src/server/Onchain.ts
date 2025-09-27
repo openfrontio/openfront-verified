@@ -6,11 +6,13 @@ import {
   type Address,
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
+import { waitForTransactionReceipt } from "viem/actions";
 import { localhost } from "viem/chains";
 import { ContractABI } from "./ContractABI";
 
 // Configuration
-const RPC_URL = process.env.RPC_URL ?? "http://127.0.0.1:8545";
+const RPC_URL =
+  process.env.RPC_URL ?? "https://ethereum-sepolia.publicnode.com";
 const CONTRACT_ADDRESS = (process.env.CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
 const MNEMONIC = process.env.mnemonic;
@@ -88,22 +90,68 @@ export async function isLobbyOnChain(lobbyId: string): Promise<boolean> {
   return info !== null;
 }
 
+export async function getConfiguredGameServer(): Promise<Address | null> {
+  try {
+    const addr = (await publicClient.readContract({
+      address: CONTRACT_ADDRESS,
+      abi: ContractABI as unknown as any,
+      functionName: "gameServer",
+      args: [],
+    })) as Address;
+    return addr;
+  } catch (_e) {
+    return null;
+  }
+}
+
+export function getDerivedServerAddress(): Address | null {
+  return serverAccount?.address ?? null;
+}
+
 export async function startGameOnChain(
   lobbyId: string,
 ): Promise<string | null> {
   try {
     if (!serverAccount) return null;
     const lobbyIdBytes32 = stringToBytes32(lobbyId);
-    const hash = await walletClient.writeContract({
-      account: serverAccount,
-      address: CONTRACT_ADDRESS,
-      abi: ContractABI as unknown as any,
-      functionName: "startGame",
-      args: [lobbyIdBytes32],
-    });
-    return hash;
+    // Retry write a few times in case of transient RPC errors
+    const maxAttempts = 3;
+    let lastError: unknown = null;
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const hash = await walletClient.writeContract({
+          account: serverAccount,
+          address: CONTRACT_ADDRESS,
+          abi: ContractABI as unknown as any,
+          functionName: "startGame",
+          args: [lobbyIdBytes32],
+        });
+        return hash;
+      } catch (e) {
+        lastError = e;
+        await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+      }
+    }
+    throw lastError ?? new Error("startGame write failed");
   } catch (e) {
     return null;
+  }
+}
+
+export async function startGameOnChainAndConfirm(
+  lobbyId: string,
+): Promise<boolean> {
+  try {
+    const hash = await startGameOnChain(lobbyId);
+    if (hash === null) return false;
+    const receipt = await waitForTransactionReceipt(publicClient, {
+      hash: hash as `0x${string}`,
+    });
+    if (receipt.status !== "success") return false;
+    const info = await getLobbyInfo(lobbyId);
+    return info !== null && info.status === GameStatus.InProgress;
+  } catch (_e) {
+    return false;
   }
 }
 
@@ -114,20 +162,25 @@ export async function declareWinnerOnChain(
   try {
     if (!serverAccount) return null;
     const lobbyIdBytes32 = stringToBytes32(lobbyId);
-    const hash = await walletClient.writeContract({
-      account: serverAccount,
-      address: CONTRACT_ADDRESS,
-      abi: ContractABI as unknown as any,
-      functionName: "declareWinner",
-      args: [lobbyIdBytes32, getAddress(winnerAddress)],
-    });
-    return hash;
+    const maxAttempts = 3;
+    let lastError: unknown = null;
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const hash = await walletClient.writeContract({
+          account: serverAccount,
+          address: CONTRACT_ADDRESS,
+          abi: ContractABI as unknown as any,
+          functionName: "declareWinner",
+          args: [lobbyIdBytes32, getAddress(winnerAddress)],
+        });
+        return hash;
+      } catch (e) {
+        lastError = e;
+        await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+      }
+    }
+    throw lastError ?? new Error("declareWinner write failed");
   } catch (e) {
     return null;
   }
-}
-
-export function getGameServerAddress(): Address {
-  return (serverAccount?.address ??
-    "0x0000000000000000000000000000000000000000") as Address;
 }
