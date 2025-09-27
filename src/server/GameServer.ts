@@ -25,10 +25,11 @@ import { createPartialGameRecord } from "../core/Util";
 import { archive, finalizeGameRecord } from "./Archive";
 import { Client } from "./Client";
 import {
-  declareWinnerOnChain,
+  declareWinnerOnChainAndConfirm,
   isLobbyOnChain,
   startGameOnChainAndConfirm,
 } from "./Onchain";
+import { getLinkedAddress } from "./WalletLinking";
 export enum GamePhase {
   Lobby = "LOBBY",
   Active = "ACTIVE",
@@ -880,7 +881,7 @@ export class GameServer {
           return;
         }
 
-        const winnerAddr = this.resolveWinnerWalletAddress(clientMsg);
+        const winnerAddr = await this.resolveWinnerWalletAddress(clientMsg);
         if (!winnerAddr) {
           this.log.warn(
             "winner has no wallet address, skipping on-chain declare",
@@ -889,16 +890,13 @@ export class GameServer {
           return;
         }
 
-        const tx = await declareWinnerOnChain(
+        const ok = await declareWinnerOnChainAndConfirm(
           lobbyId,
           winnerAddr as `0x${string}`,
         );
-        if (tx === null) {
-          this.log.error("declareWinnerOnChain failed", { gameID: lobbyId });
-        } else {
-          this.log.info("declareWinnerOnChain success", {
+        if (!ok) {
+          this.log.error("declareWinnerOnChainAndConfirm failed", {
             gameID: lobbyId,
-            tx,
           });
         }
         this.archiveGame();
@@ -911,12 +909,18 @@ export class GameServer {
     })();
   }
 
-  private resolveWinnerWalletAddress(
+  private async resolveWinnerWalletAddress(
     clientMsg: ClientSendWinnerMessage,
-  ): string | null {
+  ): Promise<string | null> {
     try {
       if (!clientMsg.winner) return null;
-      // Wallet resolution disabled until we add a secure mapping mechanism
+      if (clientMsg.winner[0] === "player") {
+        const winnerClientID = clientMsg.winner[1];
+        const c = this.allClients.get(winnerClientID);
+        if (!c) return null;
+        const addr = await getLinkedAddress(c.persistentID);
+        return addr ?? null;
+      }
       return null;
     } catch (e) {
       return null;

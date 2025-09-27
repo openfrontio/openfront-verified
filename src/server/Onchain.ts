@@ -184,3 +184,26 @@ export async function declareWinnerOnChain(
     return null;
   }
 }
+
+export async function declareWinnerOnChainAndConfirm(
+  lobbyId: string,
+  winnerAddress: Address,
+): Promise<boolean> {
+  try {
+    const hash = await declareWinnerOnChain(lobbyId, winnerAddress);
+    if (hash === null) return false;
+    const receipt = await waitForTransactionReceipt(publicClient, {
+      hash: hash as `0x${string}`,
+    });
+    if (receipt.status !== "success") return false;
+    const info = await getLobbyInfo(lobbyId);
+    // Contract sets status Finished on declareWinner
+    return (
+      info !== null &&
+      info.status === GameStatus.Finished &&
+      info.winner !== "0x0000000000000000000000000000000000000000"
+    );
+  } catch (_e) {
+    return false;
+  }
+}
