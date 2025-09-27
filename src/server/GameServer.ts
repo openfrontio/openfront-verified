@@ -24,6 +24,11 @@ import {
 import { createPartialGameRecord } from "../core/Util";
 import { archive, finalizeGameRecord } from "./Archive";
 import { Client } from "./Client";
+import {
+  declareWinnerOnChain,
+  isLobbyOnChain,
+  startGameOnChain,
+} from "./Onchain";
 export enum GamePhase {
   Lobby = "LOBBY",
   Active = "ACTIVE",
@@ -420,6 +425,25 @@ export class GameServer {
       });
       this.sendStartGameMsg(c.ws, 0);
     });
+
+    // Fire-and-forget: start on-chain lobby if it exists
+    (async () => {
+      try {
+        const lobbyId = this.id;
+        const onChain = await isLobbyOnChain(lobbyId);
+        if (!onChain) return;
+        const hash = await startGameOnChain(lobbyId);
+        if (hash === null) {
+          this.log.error("Failed to start on-chain game", { gameID: lobbyId });
+        } else {
+          this.log.info("Started on-chain game", { gameID: lobbyId, tx: hash });
+        }
+      } catch (e) {
+        this.log.error("startGameOnChain error", {
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    })();
   }
 
   private addIntent(intent: Intent) {
@@ -844,6 +868,57 @@ export class GameServer {
         winnerKey: winnerKey,
       },
     );
-    this.archiveGame();
+
+    // Attempt to declare on-chain winner if lobby exists on chain
+    (async () => {
+      try {
+        const lobbyId = this.id;
+        const onChain = await isLobbyOnChain(lobbyId);
+        if (!onChain) {
+          this.archiveGame();
+          return;
+        }
+
+        const winnerAddr = this.resolveWinnerWalletAddress(clientMsg);
+        if (!winnerAddr) {
+          this.log.warn(
+            "winner has no wallet address, skipping on-chain declare",
+          );
+          this.archiveGame();
+          return;
+        }
+
+        const tx = await declareWinnerOnChain(
+          lobbyId,
+          winnerAddr as `0x${string}`,
+        );
+        if (tx === null) {
+          this.log.error("declareWinnerOnChain failed", { gameID: lobbyId });
+        } else {
+          this.log.info("declareWinnerOnChain success", {
+            gameID: lobbyId,
+            tx,
+          });
+        }
+        this.archiveGame();
+      } catch (e) {
+        this.log.error("declareWinnerOnChain error", {
+          error: e instanceof Error ? e.message : String(e),
+        });
+        this.archiveGame();
+      }
+    })();
+  }
+
+  private resolveWinnerWalletAddress(
+    clientMsg: ClientSendWinnerMessage,
+  ): string | null {
+    try {
+      if (!clientMsg.winner) return null;
+      // Wallet resolution disabled until we add a secure mapping mechanism
+      return null;
+    } catch (e) {
+      return null;
+    }
   }
 }

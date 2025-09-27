@@ -217,14 +217,20 @@ export class LocalServer {
 
     compress(jsonString)
       .then((compressedData) => {
+        // Force-copy into a plain ArrayBuffer to satisfy BodyInit typings
+        const plainBuffer: ArrayBuffer = new ArrayBuffer(
+          compressedData.byteLength,
+        );
+        new Uint8Array(plainBuffer).set(compressedData);
+        const blob = new Blob([plainBuffer], { type: "application/json" });
         return fetch(`/${workerPath}/api/archive_singleplayer_game`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Content-Encoding": "gzip",
           },
-          body: compressedData,
-          keepalive: true, // Ensures request completes even if page unloads
+          body: blob,
+          keepalive: true,
         });
       })
       .catch((error) => {
