@@ -44,6 +44,16 @@ function stringToBytes32(str: string): `0x${string}` {
   return `0x${hex}` as `0x${string}`;
 }
 
+function bytes32ToString(bytes32: string): string {
+  const hex = bytes32.startsWith("0x") ? bytes32.slice(2) : bytes32;
+  const trimmed = hex.replace(/0+$/, "");
+  const bytes: number[] = [];
+  for (let i = 0; i < trimmed.length; i += 2) {
+    bytes.push(parseInt(trimmed.substring(i, i + 2), 16));
+  }
+  return new TextDecoder().decode(new Uint8Array(bytes));
+}
+
 export enum GameStatus {
   Created = 0,
   InProgress = 1,
@@ -206,4 +216,24 @@ export async function declareWinnerOnChainAndConfirm(
   } catch (_e) {
     return false;
   }
+}
+
+export function watchGameStarted(
+  onEvent: (lobbyId: string) => void,
+): () => void {
+  return publicClient.watchContractEvent({
+    address: CONTRACT_ADDRESS,
+    abi: ContractABI as unknown as any,
+    eventName: "GameStarted",
+    onLogs: (logs: any[]) => {
+      try {
+        for (const log of logs) {
+          const id = bytes32ToString(log.args?.lobbyId as string);
+          onEvent(id);
+        }
+      } catch (_e) {
+        // swallow
+      }
+    },
+  } as any);
 }

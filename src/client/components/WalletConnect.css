@@ -1,0 +1,346 @@
+/* Wallet Connect Button Styles */
+.wallet-button-container {
+  position: relative;
+  z-index: 1000;
+}
+
+.wallet-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  background: #0075ff;
+  color: white;
+  width: 100%;
+  min-height: 48px;
+}
+
+.wallet-button:hover {
+  background: #0056cc;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 117, 255, 0.4);
+}
+
+.wallet-button:active {
+  transform: translateY(0);
+}
+
+.wallet-button.loading {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.wallet-button.connect {
+  background: #0075ff;
+}
+
+.wallet-button.connected {
+  background: #28a745;
+  justify-content: space-between;
+  min-width: 200px;
+}
+
+.wallet-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.wallet-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-email {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.wallet-address {
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.wallet-balance {
+  font-size: 12px;
+  opacity: 0.8;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.dropdown-icon {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.2s ease;
+}
+
+.wallet-button.connected:hover {
+  background: #218838;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+}
+
+.wallet-button.connected:hover .dropdown-icon {
+  transform: translateY(2px);
+}
+
+/* Dropdown Styles */
+.wallet-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 280px;
+  background: #1a1a2e;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: slideDown 0.2s ease;
+  z-index: 1001;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-content {
+  padding: 16px;
+}
+
+.dropdown-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dropdown-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dropdown-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 13px;
+}
+
+.item-label {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.item-value {
+  color: rgba(255, 255, 255, 0.9);
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.dropdown-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dropdown-section h5 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.wallet-switch-button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  margin: 4px 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: monospace;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.wallet-switch-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 16px 0;
+}
+
+.logout-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: #ef4444;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.logout-button:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.logout-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .wallet-dropdown {
+    background: #0f0f1e;
+  }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 640px) {
+  .wallet-button {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  .wallet-dropdown {
+    min-width: 240px;
+    right: -10px;
+  }
+
+  .dropdown-content {
+    padding: 12px;
+  }
+}
+
+/* Fix Privy modal styling */
+[data-privy] {
+  font-family: inherit !important;
+}
+
+/* Fix submit button positioning and styling */
+[data-privy] form {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+}
+
+[data-privy] form button[type="submit"] {
+  background: #6366f1 !important;
+  color: white !important;
+  border: none !important;
+  padding: 12px 24px !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  font-weight: 500 !important;
+  font-size: 14px !important;
+  transition: all 0.2s ease !important;
+  order: 2 !important; /* Ensure submit button comes after input */
+  margin-top: 8px !important;
+}
+
+[data-privy] form button[type="submit"]:hover {
+  background: #5856eb !important;
+  transform: translateY(-1px) !important;
+}
+
+[data-privy] form button[type="submit"]:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+}
+
+/* Fix input field styling */
+[data-privy] input[type="email"] {
+  order: 1 !important; /* Ensure input comes before button */
+  padding: 12px 16px !important;
+  border: 1px solid #374151 !important;
+  border-radius: 8px !important;
+  background: #1f2937 !important;
+  color: white !important;
+  font-size: 14px !important;
+}
+
+[data-privy] input[type="email"]:focus {
+  outline: none !important;
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
+}
+
+/* Fix modal positioning */
+[data-privy] [role="dialog"] {
+  max-width: 400px !important;
+  margin: auto !important;
+}
+
+/* Fix account details display */
+[data-privy] .privy-account-details {
+  color: white !important;
+}
+
+[data-privy] .privy-account-details .privy-account-email {
+  color: #d1d5db !important;
+}
+
+[data-privy] .privy-account-details .privy-account-address {
+  color: #9ca3af !important;
+  font-family: monospace !important;
+}
+
+/* Fix disconnect button to say logout */
+[data-privy] button[data-testid="disconnect-button"] {
+  background: #dc2626 !important;
+  color: white !important;
+}
+
+[data-privy] button[data-testid="disconnect-button"]:hover {
+  background: #b91c1c !important;
+}

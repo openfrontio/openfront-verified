@@ -58,6 +58,30 @@ app.use(
   }),
 );
 
+// Proxy wallet endpoints to a worker (worker 0 by default)
+app.all("/api/wallet/*", async (req, res) => {
+  try {
+    const workerPort = config.workerPortByIndex(0);
+    // Forward the same /api/wallet/* path to the worker (worker defines /api/wallet/*)
+    const url = `http://localhost:${workerPort}${req.path}`;
+    const init: any = {
+      method: req.method,
+      headers: {
+        ...req.headers,
+      },
+    };
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      init.body = JSON.stringify(req.body ?? {});
+      init.headers["content-type"] = "application/json";
+    }
+    const f = await fetch(url, init);
+    const text = await f.text();
+    res.status(f.status).send(text);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 let publicLobbiesJsonStr = "";
 
 const publicLobbyIDs: Set<string> = new Set();

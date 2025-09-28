@@ -8,6 +8,7 @@
     "module": "ESNext",
     "rootDir": ".",
     "moduleResolution": "node",
+    "jsx": "react-jsx",
 
     // Emit
     "sourceMap": true,
@@ -30,5 +31,5 @@
     "tests/**/*",
     "src/scripts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "src/client/contract.ts"]
 }

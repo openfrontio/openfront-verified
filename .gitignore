@@ -6,7 +6,14 @@ coverage/
 TODO.txt
 resources/images/.DS_Store
 resources/.DS_Store
-.env*
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+.env.prod
+.env.dev
+.env.test
 .DS_Store
 .clinic/
 CLAUDE.md

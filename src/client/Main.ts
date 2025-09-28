@@ -8,6 +8,8 @@ import { UserSettings } from "../core/game/UserSettings";
 import "./AccountModal";
 import { joinLobby } from "./ClientGameRunner";
 import { fetchCosmetics } from "./Cosmetics";
+import "./CreateTournament";
+import type { CreateTournamentModal } from "./CreateTournament";
 import "./DarkModeButton";
 import { DarkModeButton } from "./DarkModeButton";
 import "./FlagInput";
@@ -17,11 +19,13 @@ import { GameStartingModal } from "./GameStartingModal";
 import "./GoogleAdElement";
 import { HelpModal } from "./HelpModal";
 import { HostLobbyModal as HostPrivateLobbyModal } from "./HostLobbyModal";
+import { initializePrivy } from "./InitPrivy";
 import { JoinPrivateLobbyModal } from "./JoinPrivateLobbyModal";
 import "./LangSelector";
 import { LangSelector } from "./LangSelector";
 import { LanguageModal } from "./LanguageModal";
 import { NewsModal } from "./NewsModal";
+import "./OpenGamesModal";
 import "./PublicLobby";
 import { PublicLobby } from "./PublicLobby";
 import { SinglePlayerModal } from "./SinglePlayerModal";
@@ -350,6 +354,32 @@ class Client {
       }
     });
 
+    const createTournamentButton = document.getElementById(
+      "create-tournament-button",
+    );
+    if (createTournamentButton) {
+      createTournamentButton.addEventListener("click", () => {
+        if (this.usernameInput?.isValid()) {
+          const ct = document.querySelector(
+            "create-tournament-modal",
+          ) as CreateTournamentModal;
+          ct?.open();
+          this.publicLobby.leaveLobby();
+        }
+      });
+    }
+
+    const openGamesBtn = document.getElementById("browse-lobby-button");
+    if (openGamesBtn) {
+      openGamesBtn.addEventListener("click", () => {
+        if (this.usernameInput?.isValid()) {
+          const modal = document.querySelector("open-games-modal") as any;
+          modal?.open();
+          this.publicLobby?.leaveLobby();
+        }
+      });
+    }
+
     this.joinModal = document.querySelector(
       "join-private-lobby-modal",
     ) as JoinPrivateLobbyModal;
@@ -528,6 +558,11 @@ class Client {
         document
           .getElementById("username-validation-error")
           ?.classList.add("hidden");
+        // Hide the wallet button while in-game
+        const walletContainer = document.getElementById(
+          "wallet-button-container",
+        );
+        if (walletContainer) walletContainer.style.display = "none";
         [
           "single-player-modal",
           "host-lobby-modal",
@@ -597,6 +632,9 @@ class Client {
     this.gameStop();
     this.gameStop = null;
     this.publicLobby.leaveLobby();
+    // Show the wallet button again after exiting game
+    const walletContainer = document.getElementById("wallet-button-container");
+    if (walletContainer) walletContainer.style.display = "";
   }
 
   private handleKickPlayer(event: CustomEvent) {
@@ -611,6 +649,12 @@ class Client {
 
 // Initialize the client when the DOM is loaded
 document.addEventListener("DOMContentLoaded", () => {
+  // Ensure Privy is initialized so wallet UI is visible and window.privyWallet is available
+  try {
+    initializePrivy();
+  } catch (e) {
+    console.error("Privy init error:", e);
+  }
   new Client().initialize();
 });
 

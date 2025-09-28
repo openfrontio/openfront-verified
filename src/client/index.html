@@ -203,6 +203,11 @@
     <main class="flex justify-center flex-grow">
       <div class="container pt-12">
         <token-login class="w-[20%] md:w-[15%]"></token-login>
+        <o-button
+          id="connect-wallet"
+          title="Connect your wallet"
+          block
+        ></o-button>
 
         <div class="container__row">
           <flag-input class="w-[20%] md:w-[20%]"></flag-input>
@@ -231,6 +236,18 @@
             secondary
           ></o-button>
           <o-button
+            id="create-tournament-button"
+            title="Create Tournament"
+            block
+            secondary
+          ></o-button>
+          <o-button
+            id="browse-lobby-button"
+            title="Browse Tournaments"
+            block
+            secondary
+          ></o-button>
+          <o-button
             id="join-private-lobby-button"
             title="Join Lobby"
             translationKey="main.join_lobby"
@@ -244,7 +261,7 @@
             secondary
           ></o-button> -->
         </div>
-
+        <open-games-modal></open-games-modal>
         <o-button
           id="single-player"
           title="Single Player"
@@ -387,6 +404,7 @@
     <!-- Game modals and overlays -->
     <single-player-modal></single-player-modal>
     <host-lobby-modal></host-lobby-modal>
+    <create-tournament-modal></create-tournament-modal>
     <join-private-lobby-modal></join-private-lobby-modal>
     <emoji-table></emoji-table>
     <build-menu></build-menu>

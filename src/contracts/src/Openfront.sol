@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import {IOpenfront} from "./interfaces/IOpenfront.sol";
 
@@ -62,7 +62,7 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
         _;
     }
 
-    constructor(address _gameServer) {
+    constructor(address _gameServer) Ownable(msg.sender) {
         gameServer = _gameServer;
     }
     
@@ -72,7 +72,6 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
         require(msg.value == betAmount, InsufficientFunds());
         require(lobbies[lobbyId].host == address(0), LobbyAlreadyExists());
         
-        // Create a new lobby
         // Create a new lobby
         lobbies[lobbyId] = Lobby({
             host: msg.sender,

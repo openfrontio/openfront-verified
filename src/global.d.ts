@@ -40,3 +40,4 @@ declare module "*.xml" {
   const value: string;
   export default value;
 }
+declare const __PRIVY_APP_ID__: string;

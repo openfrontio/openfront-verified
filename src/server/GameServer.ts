@@ -26,8 +26,9 @@ import { archive, finalizeGameRecord } from "./Archive";
 import { Client } from "./Client";
 import {
   declareWinnerOnChainAndConfirm,
+  GameStatus,
+  getLobbyInfo,
   isLobbyOnChain,
-  startGameOnChainAndConfirm,
 } from "./Onchain";
 import { getLinkedAddress } from "./WalletLinking";
 export enum GamePhase {
@@ -396,17 +397,30 @@ export class GameServer {
     (async () => {
       try {
         const lobbyId = this.id;
-        const onChain = await isLobbyOnChain(lobbyId);
-        if (onChain) {
-          const ok = await startGameOnChainAndConfirm(lobbyId);
-          if (!ok) {
-            this.log.error(
-              "On-chain start failed; not starting in-memory game",
-              { gameID: lobbyId },
+        const info = await getLobbyInfo(lobbyId);
+        if (info !== null) {
+          if (info.status === GameStatus.InProgress) {
+            this.log.info("On-chain lobby already in progress", {
+              gameID: lobbyId,
+            });
+          } else if (info.status === GameStatus.Created) {
+            // Short poll to allow the host's start tx to land before we proceed
+            for (let i = 0; i < 10; i++) {
+              await new Promise((r) => setTimeout(r, 500));
+              const again = await getLobbyInfo(lobbyId);
+              if (again && again.status === GameStatus.InProgress) {
+                this.log.info("On-chain lobby moved to InProgress", {
+                  gameID: lobbyId,
+                });
+                break;
+              }
+            }
+          } else {
+            this.log.warn(
+              "On-chain lobby not in a startable state; proceeding with in-memory start",
+              { gameID: lobbyId, status: info.status },
             );
-            return;
           }
-          this.log.info("On-chain start confirmed", { gameID: lobbyId });
         }
 
         this._hasStarted = true;

@@ -1,13 +1,20 @@
 import { execSync } from "child_process";
 import CopyPlugin from "copy-webpack-plugin";
+import dotenv from "dotenv";
 import ESLintPlugin from "eslint-webpack-plugin";
 import HtmlWebpackPlugin from "html-webpack-plugin";
+import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
 import webpack from "webpack";
 
+const require = createRequire(import.meta.url);
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load .env so DefinePlugin can inject client-side env values
+dotenv.config();
 
 const gitCommit =
   process.env.GIT_COMMIT ?? execSync("git rev-parse HEAD").toString().trim();
@@ -44,7 +51,7 @@ export default async (env, argv) => {
           },
         },
         {
-          test: /\.ts$/,
+          test: /\.tsx?$/,
           use: "ts-loader",
           exclude: /node_modules/,
         },
@@ -102,6 +109,12 @@ export default async (env, argv) => {
           __dirname,
           "node_modules/protobufjs/minimal.js",
         ),
+        "process/browser": require.resolve("process/browser.js"),
+        process: require.resolve("process/browser.js"),
+      },
+      fallback: {
+        buffer: require.resolve("buffer/"),
+        stream: require.resolve("stream-browserify"),
       },
     },
     plugins: [
@@ -130,6 +143,12 @@ export default async (env, argv) => {
           process.env.STRIPE_PUBLISHABLE_KEY,
         ),
         "process.env.API_DOMAIN": JSON.stringify(process.env.API_DOMAIN),
+        "process.env.PRIVY_APP_ID": JSON.stringify(process.env.PRIVY_APP_ID),
+        __PRIVY_APP_ID__: JSON.stringify(process.env.PRIVY_APP_ID ?? ""),
+      }),
+      new webpack.ProvidePlugin({
+        Buffer: ["buffer", "Buffer"],
+        process: "process/browser",
       }),
       new CopyPlugin({
         patterns: [
@@ -233,6 +252,7 @@ export default async (env, argv) => {
                 "/api/env",
                 "/api/game",
                 "/api/public_lobbies",
+                "/api/wallet",
                 "/api/join_game",
                 "/api/start_game",
                 "/api/create_game",

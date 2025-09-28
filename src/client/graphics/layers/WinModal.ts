@@ -6,6 +6,7 @@ import { EventBus } from "../../../core/EventBus";
 import { GameUpdateType } from "../../../core/game/GameUpdates";
 import { GameView } from "../../../core/game/GameView";
 import "../../components/PatternButton";
+import { GameStatus, claimPrize, getLobbyInfo } from "../../Contract";
 import {
   fetchCosmetics,
   handlePurchase,
@@ -13,6 +14,7 @@ import {
 } from "../../Cosmetics";
 import { getUserMe } from "../../jwt";
 import { SendWinnerEvent } from "../../Transport";
+import { WalletManager } from "../../Wallet";
 import { Layer } from "./Layer";
 
 @customElement("win-modal")
@@ -30,6 +32,15 @@ export class WinModal extends LitElement implements Layer {
 
   @state()
   private patternContent: TemplateResult | null = null;
+
+  @state()
+  private showClaimButton: boolean = false;
+
+  @state()
+  private isClaiming: boolean = false;
+
+  @state()
+  private claimMsg: string = "";
 
   private _title: string;
 
@@ -50,7 +61,7 @@ export class WinModal extends LitElement implements Layer {
           : "hidden"}"
       >
         <h2 class="m-0 mb-4 text-[26px] text-center text-white">
-          ${this._title || ""}
+          ${this._title ?? ""}
         </h2>
         ${this.innerHtml()}
         <div
@@ -58,6 +69,17 @@ export class WinModal extends LitElement implements Layer {
             ? "flex justify-between gap-2.5"
             : "hidden"}"
         >
+          ${this.showClaimButton
+            ? html`<button
+                @click=${this._handleClaimPrize}
+                class="flex-1 px-3 py-3 text-base cursor-pointer bg-green-600/70 text-white border-0 rounded transition-all duration-200 hover:bg-green-600/80 hover:-translate-y-px active:translate-y-px disabled:opacity-60"
+                ?disabled=${this.isClaiming}
+              >
+                ${this.isClaiming
+                  ? (translateText("win_modal.claiming") ?? "Claiming...")
+                  : (translateText("win_modal.claim_prize") ?? "Claim Prize")}
+              </button>`
+            : html``}
           <button
             @click=${this._handleExit}
             class="flex-1 px-3 py-3 text-base cursor-pointer bg-blue-500/60 text-white border-0 rounded transition-all duration-200 hover:bg-blue-500/80 hover:-translate-y-px active:translate-y-px"
@@ -71,6 +93,11 @@ export class WinModal extends LitElement implements Layer {
             ${translateText("win_modal.keep")}
           </button>
         </div>
+        ${this.claimMsg
+          ? html`<div class="mt-3 text-center text-sm text-white">
+              ${this.claimMsg}
+            </div>`
+          : html``}
       </div>
 
       <style>
@@ -187,6 +214,23 @@ export class WinModal extends LitElement implements Layer {
 
   async show() {
     await this.loadPatternContent();
+    // Enable claim button if on-chain lobby is Finished and you are winner
+    try {
+      const lobbyId = this.game.gameID();
+      const info = await getLobbyInfo(lobbyId);
+      const myAddr = WalletManager.getInstance().address?.toLowerCase();
+      this.showClaimButton = Boolean(
+        info &&
+          info.status === GameStatus.Finished &&
+          info.winner &&
+          info.winner.toLowerCase() !==
+            "0x0000000000000000000000000000000000000000" &&
+          myAddr &&
+          info.winner.toLowerCase() === myAddr,
+      );
+    } catch (_e) {
+      this.showClaimButton = false;
+    }
     this.isVisible = true;
     this.requestUpdate();
     setTimeout(() => {
@@ -204,6 +248,25 @@ export class WinModal extends LitElement implements Layer {
   private _handleExit() {
     this.hide();
     window.location.href = "/";
+  }
+
+  private async _handleClaimPrize() {
+    if (this.isClaiming) return;
+    try {
+      this.isClaiming = true;
+      this.claimMsg = translateText("win_modal.claiming") ?? "Claiming...";
+      const lobbyId = this.game.gameID();
+      await claimPrize({ lobbyId });
+      this.claimMsg =
+        translateText("win_modal.claim_success") ??
+        "Prize claimed successfully.";
+      this.showClaimButton = false;
+    } catch (e: any) {
+      this.claimMsg = e?.message ?? "Failed to claim prize.";
+    } finally {
+      this.isClaiming = false;
+      this.requestUpdate();
+    }
   }
 
   init() {}

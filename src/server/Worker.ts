@@ -92,6 +92,8 @@ export async function startWorker() {
   );
   privilegeRefresher.start();
 
+  // Removed on-chain active listening per product decision; server starts only when host requests
+
   // Middleware to handle /wX path prefix
   app.use((req, res, next) => {
     // Extract the original path without the worker prefix
@@ -165,8 +167,8 @@ export async function startWorker() {
     ) {
       return res.status(400).json({ error: "invalid body" });
     }
-    // Basic message binding: must include the persistentId
-    if (!message.includes(pid) || !validateAndConsumeNonce(pid, nonce)) {
+    // Validate and consume nonce bound to this user; require that signed message contains the nonce
+    if (!message.includes(nonce) || !validateAndConsumeNonce(pid, nonce)) {
       return res.status(400).json({ error: "invalid nonce or message" });
     }
     try {
