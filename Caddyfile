@@ -6,104 +6,104 @@
     # Caddy will automatically obtain Let's Encrypt certificates
     # No manual certificate management needed
 
-    # Worker routing - route /wN/ to port 3001+N
+    # Worker routing - route /wN and /wN/* to port 3001+N
     # Dev mode uses 2 workers (w0, w1), prod uses up to 20
-    @worker0 path /w0/*
+    @worker0 path /w0 /w0/*
     handle @worker0 {
         reverse_proxy localhost:3001
     }
     
-    @worker1 path /w1/*
+    @worker1 path /w1 /w1/*
     handle @worker1 {
         reverse_proxy localhost:3002
     }
     
-    @worker2 path /w2/*
+    @worker2 path /w2 /w2/*
     handle @worker2 {
         reverse_proxy localhost:3003
     }
     
-    @worker3 path /w3/*
+    @worker3 path /w3 /w3/*
     handle @worker3 {
         reverse_proxy localhost:3004
     }
     
-    @worker4 path /w4/*
+    @worker4 path /w4 /w4/*
     handle @worker4 {
         reverse_proxy localhost:3005
     }
     
-    @worker5 path /w5/*
+    @worker5 path /w5 /w5/*
     handle @worker5 {
         reverse_proxy localhost:3006
     }
     
-    @worker6 path /w6/*
+    @worker6 path /w6 /w6/*
     handle @worker6 {
         reverse_proxy localhost:3007
     }
     
-    @worker7 path /w7/*
+    @worker7 path /w7 /w7/*
     handle @worker7 {
         reverse_proxy localhost:3008
     }
     
-    @worker8 path /w8/*
+    @worker8 path /w8 /w8/*
     handle @worker8 {
         reverse_proxy localhost:3009
     }
     
-    @worker9 path /w9/*
+    @worker9 path /w9 /w9/*
     handle @worker9 {
         reverse_proxy localhost:3010
     }
     
-    @worker10 path /w10/*
+    @worker10 path /w10 /w10/*
     handle @worker10 {
         reverse_proxy localhost:3011
     }
     
-    @worker11 path /w11/*
+    @worker11 path /w11 /w11/*
     handle @worker11 {
         reverse_proxy localhost:3012
     }
     
-    @worker12 path /w12/*
+    @worker12 path /w12 /w12/*
     handle @worker12 {
         reverse_proxy localhost:3013
     }
     
-    @worker13 path /w13/*
+    @worker13 path /w13 /w13/*
     handle @worker13 {
         reverse_proxy localhost:3014
     }
     
-    @worker14 path /w14/*
+    @worker14 path /w14 /w14/*
     handle @worker14 {
         reverse_proxy localhost:3015
     }
     
-    @worker15 path /w15/*
+    @worker15 path /w15 /w15/*
     handle @worker15 {
         reverse_proxy localhost:3016
     }
     
-    @worker16 path /w16/*
+    @worker16 path /w16 /w16/*
     handle @worker16 {
         reverse_proxy localhost:3017
     }
     
-    @worker17 path /w17/*
+    @worker17 path /w17 /w17/*
     handle @worker17 {
         reverse_proxy localhost:3018
     }
     
-    @worker18 path /w18/*
+    @worker18 path /w18 /w18/*
     handle @worker18 {
         reverse_proxy localhost:3019
     }
     
-    @worker19 path /w19/*
+    @worker19 path /w19 /w19/*
     handle @worker19 {
         reverse_proxy localhost:3020
     }

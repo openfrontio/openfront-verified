@@ -300,12 +300,29 @@ export class Transport {
   ) {
     this.startPing();
     this.killExistingSocket();
-    const wsHost = window.location.host;
-    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+
+    // Determine WebSocket host from environment or use current location
+    const envWsHost =
+      typeof process !== "undefined" && process.env?.WS_HOST
+        ? process.env.WS_HOST
+        : null;
+
+    const wsHost = envWsHost ?? window.location.host;
+    const wsProtocol =
+      envWsHost || window.location.protocol === "https:" ? "wss:" : "ws:";
+
     const workerPath = this.lobbyConfig.serverConfig.workerPath(
       this.lobbyConfig.gameID,
     );
-    this.socket = new WebSocket(`${wsProtocol}//${wsHost}/${workerPath}`);
+
+    const wsUrl = `${wsProtocol}//${wsHost}/${workerPath}`;
+    console.log(`[Transport] Connecting WebSocket to: ${wsUrl}`, {
+      envWsHost,
+      currentHost: window.location.host,
+      usingHost: wsHost,
+    });
+
+    this.socket = new WebSocket(wsUrl);
     this.onconnect = onconnect;
     this.onmessage = onmessage;
     this.socket.onopen = () => {

@@ -54,6 +54,9 @@ export default async (env, argv) => {
   console.log(
     `  RPC_URL:               ${process.env.RPC_URL ?? "❌ NOT SET (will use default)"}`,
   );
+  console.log(
+    `  WS_HOST:               ${process.env.WS_HOST ?? "window.location.host (default)"}`,
+  );
   console.log("\n🔐 AUTHENTICATION:");
   console.log(
     `  PRIVY_APP_ID:          ${process.env.PRIVY_APP_ID ? "✅ SET" : "❌ NOT SET"}`,
@@ -213,6 +216,7 @@ export default async (env, argv) => {
           process.env.CONTRACT_ADDRESS,
         ),
         "process.env.RPC_URL": JSON.stringify(process.env.RPC_URL),
+        "process.env.WS_HOST": JSON.stringify(process.env.WS_HOST),
         __PRIVY_APP_ID__: JSON.stringify(process.env.PRIVY_APP_ID ?? ""),
       }),
       new webpack.ProvidePlugin({

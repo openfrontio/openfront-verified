@@ -62,7 +62,8 @@
   ],
   "build": {
     "env": {
-      "NODE_ENV": "production"
+      "NODE_ENV": "production",
+      "WS_HOST": "api.eigenarcade.com"
     }
   },
   "regions": ["sfo1"]
