@@ -13,9 +13,10 @@ dist/
 .env.*
 !.env.example
 
-# Documentation
+# Documentation (keep changelog.md for build)
 *.md
 !README.md
+!resources/changelog.md
 
 # Git and CI
 .git/
