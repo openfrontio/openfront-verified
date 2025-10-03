@@ -76,8 +76,7 @@ EXPOSE 3001-3020
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/api/public_lobbies', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Switch to node user for security
-USER node
+USER root
 
 # Start the server directly (no supervisor needed)
 CMD ["npm", "run", "start:server"]

@@ -1,4 +1,5 @@
 import { getAuthHeader } from "../jwt";
+import { getPersistentID } from "../Main";
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(url, init);
@@ -22,20 +23,11 @@ function buildLinkMessage(address: string, nonce: string): string {
   ].join("\n");
 }
 
-function getPersistentIdFromCookie(): string | null {
-  const COOKIE_NAME = "player_persistent_id";
-  const cookies = document.cookie.split(";");
-  for (const cookie of cookies) {
-    const [cookieName, cookieValue] = cookie.split("=").map((c) => c.trim());
-    if (cookieName === COOKIE_NAME) return cookieValue ?? null;
-  }
-  return null;
-}
-
 function getAuthOrPersistentHeader(): string {
   const jwt = getAuthHeader();
   if (jwt) return jwt;
-  const pid = getPersistentIdFromCookie();
+  // Use Main.ts function which auto-creates the persistent ID if needed
+  const pid = getPersistentID();
   return pid ? `Bearer ${pid}` : "";
 }
 
@@ -61,7 +53,7 @@ export async function linkWalletIfNeeded(address: string): Promise<void> {
       return;
     }
 
-    const persistentId = getPersistentIdFromCookie();
+    const persistentId = getPersistentID();
     console.log("[walletLink] Using persistent ID:", persistentId);
 
     // Check existing link
