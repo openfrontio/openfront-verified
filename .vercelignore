@@ -1,0 +1,48 @@
+# Test and coverage files (src/ is needed for build)
+tests/
+coverage/
+
+# Build artifacts
+node_modules/
+.next/
+dist/
+
+# Development files
+*.log
+*.env
+.env.*
+!.env.example
+
+# Documentation
+*.md
+!README.md
+
+# Git and CI
+.git/
+.github/
+.husky/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Map generator
+map-generator/
+
+# Contract files
+src/contracts/
+
+# Server-only files
+Server.Dockerfile
+docker-compose*.yml
+supervisord.conf
+startup.sh
+nginx.conf
+
+# Keep only what's needed for static hosting
+!static/
+!vercel.json
+!package.json
+!package-lock.json
