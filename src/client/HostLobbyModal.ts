@@ -601,33 +601,66 @@ export class HostLobbyModal extends LitElement {
   }
 
   private handleInstantBuildChange(e: Event) {
-    this.instantBuild = Boolean((e.target as HTMLInputElement).checked);
-    this.putGameConfig();
+    const target = e.target as HTMLInputElement;
+    this.instantBuild = Boolean(target.checked);
+    console.log(`[HostLobbyModal] instantBuild changed to:`, this.instantBuild);
+    this.requestUpdate();
+    if (this.lobbyId) {
+      this.putGameConfig();
+    }
   }
 
   private handleInfiniteGoldChange(e: Event) {
-    this.infiniteGold = Boolean((e.target as HTMLInputElement).checked);
-    this.putGameConfig();
+    const target = e.target as HTMLInputElement;
+    this.infiniteGold = Boolean(target.checked);
+    console.log(`[HostLobbyModal] infiniteGold changed to:`, this.infiniteGold);
+    this.requestUpdate();
+    if (this.lobbyId) {
+      this.putGameConfig();
+    }
   }
 
   private handleDonateGoldChange(e: Event) {
-    this.donateGold = Boolean((e.target as HTMLInputElement).checked);
-    this.putGameConfig();
+    const target = e.target as HTMLInputElement;
+    this.donateGold = Boolean(target.checked);
+    console.log(`[HostLobbyModal] donateGold changed to:`, this.donateGold);
+    this.requestUpdate();
+    if (this.lobbyId) {
+      this.putGameConfig();
+    }
   }
 
   private handleInfiniteTroopsChange(e: Event) {
-    this.infiniteTroops = Boolean((e.target as HTMLInputElement).checked);
-    this.putGameConfig();
+    const target = e.target as HTMLInputElement;
+    this.infiniteTroops = Boolean(target.checked);
+    console.log(
+      `[HostLobbyModal] infiniteTroops changed to:`,
+      this.infiniteTroops,
+    );
+    this.requestUpdate();
+    if (this.lobbyId) {
+      this.putGameConfig();
+    }
   }
 
   private handleCompactMapChange(e: Event) {
-    this.compactMap = Boolean((e.target as HTMLInputElement).checked);
-    this.putGameConfig();
+    const target = e.target as HTMLInputElement;
+    this.compactMap = Boolean(target.checked);
+    console.log(`[HostLobbyModal] compactMap changed to:`, this.compactMap);
+    this.requestUpdate();
+    if (this.lobbyId) {
+      this.putGameConfig();
+    }
   }
 
   private handleDonateTroopsChange(e: Event) {
-    this.donateTroops = Boolean((e.target as HTMLInputElement).checked);
-    this.putGameConfig();
+    const target = e.target as HTMLInputElement;
+    this.donateTroops = Boolean(target.checked);
+    console.log(`[HostLobbyModal] donateTroops changed to:`, this.donateTroops);
+    this.requestUpdate();
+    if (this.lobbyId) {
+      this.putGameConfig();
+    }
   }
 
   private async handleDisableNPCsChange(e: Event) {

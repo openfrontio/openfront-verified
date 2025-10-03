@@ -889,34 +889,73 @@ export class GameServer {
     (async () => {
       try {
         const lobbyId = this.id;
-        const onChain = await isLobbyOnChain(lobbyId);
-        if (!onChain) {
-          this.archiveGame();
-          return;
-        }
+        this.log.info("Starting on-chain winner declaration process", {
+          gameID: lobbyId,
+          winner: clientMsg.winner,
+        });
 
-        const winnerAddr = await this.resolveWinnerWalletAddress(clientMsg);
-        if (!winnerAddr) {
-          this.log.warn(
-            "winner has no wallet address, skipping on-chain declare",
+        const onChain = await isLobbyOnChain(lobbyId);
+        this.log.info("Checked if lobby exists on-chain", {
+          gameID: lobbyId,
+          onChain,
+        });
+
+        if (!onChain) {
+          this.log.info(
+            "Lobby not on-chain, skipping on-chain winner declaration",
+            {
+              gameID: lobbyId,
+            },
           );
           this.archiveGame();
           return;
         }
 
+        const winnerAddr = await this.resolveWinnerWalletAddress(clientMsg);
+        this.log.info("Resolved winner wallet address", {
+          gameID: lobbyId,
+          winnerAddress: winnerAddr,
+          hasAddress: !!winnerAddr,
+        });
+
+        if (!winnerAddr) {
+          this.log.warn(
+            "Winner has no wallet address linked, cannot declare on-chain",
+            {
+              gameID: lobbyId,
+              winner: clientMsg.winner,
+            },
+          );
+          this.archiveGame();
+          return;
+        }
+
+        this.log.info("Calling declareWinnerOnChainAndConfirm", {
+          gameID: lobbyId,
+          winnerAddress: winnerAddr,
+        });
+
         const ok = await declareWinnerOnChainAndConfirm(
           lobbyId,
           winnerAddr as `0x${string}`,
         );
+
         if (!ok) {
-          this.log.error("declareWinnerOnChainAndConfirm failed", {
+          this.log.error("declareWinnerOnChainAndConfirm returned false", {
             gameID: lobbyId,
+            winnerAddress: winnerAddr,
+          });
+        } else {
+          this.log.info("✅ Winner declared on-chain successfully!", {
+            gameID: lobbyId,
+            winnerAddress: winnerAddr,
           });
         }
         this.archiveGame();
       } catch (e) {
         this.log.error("declareWinnerOnChain error", {
           error: e instanceof Error ? e.message : String(e),
+          stack: e instanceof Error ? e.stack : undefined,
         });
         this.archiveGame();
       }
@@ -927,16 +966,60 @@ export class GameServer {
     clientMsg: ClientSendWinnerMessage,
   ): Promise<string | null> {
     try {
-      if (!clientMsg.winner) return null;
+      if (!clientMsg.winner) {
+        this.log.warn("No winner in message", { winner: clientMsg.winner });
+        return null;
+      }
+
       if (clientMsg.winner[0] === "player") {
         const winnerClientID = clientMsg.winner[1];
+        this.log.info("Resolving wallet for player winner", {
+          winnerClientID,
+        });
+
         const c = this.allClients.get(winnerClientID);
-        if (!c) return null;
+        if (!c) {
+          this.log.warn("Winner client not found in allClients", {
+            winnerClientID,
+            availableClients: Array.from(this.allClients.keys()),
+          });
+          return null;
+        }
+
+        this.log.info("Found winner client, looking up linked address", {
+          winnerClientID,
+          persistentID: c.persistentID,
+        });
+
         const addr = await getLinkedAddress(c.persistentID);
+
+        this.log.info("Wallet address lookup result", {
+          winnerClientID,
+          persistentID: c.persistentID,
+          address: addr,
+          hasAddress: !!addr,
+        });
+
         return addr ?? null;
+      } else if (clientMsg.winner[0] === "team") {
+        this.log.warn(
+          "Team winners not yet supported for on-chain declaration",
+          {
+            team: clientMsg.winner[1],
+          },
+        );
+        return null;
       }
+
+      this.log.warn("Unknown winner type", {
+        winnerType: clientMsg.winner[0],
+      });
       return null;
     } catch (e) {
+      this.log.error("Exception in resolveWinnerWalletAddress", {
+        error: e instanceof Error ? e.message : String(e),
+        stack: e instanceof Error ? e.stack : undefined,
+      });
       return null;
     }
   }

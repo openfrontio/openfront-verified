@@ -22,6 +22,64 @@ const gitCommit =
 export default async (env, argv) => {
   const isProduction = argv.mode === "production";
 
+  // Allow configuring remote server for local development
+  const GAME_SERVER_HOST = process.env.GAME_SERVER_HOST ?? "localhost";
+  const GAME_SERVER_PROTOCOL = process.env.GAME_SERVER_PROTOCOL ?? "http";
+
+  // Log all critical environment variables
+  console.log("\n" + "=".repeat(80));
+  console.log("🚀 WEBPACK BUILD CONFIGURATION");
+  console.log("=".repeat(80));
+  console.log(
+    `Mode:                    ${isProduction ? "PRODUCTION" : "DEVELOPMENT"}`,
+  );
+  console.log(`Git Commit:              ${gitCommit}`);
+  console.log("\n📡 SERVER CONNECTION:");
+  console.log(`  Game Server Host:      ${GAME_SERVER_HOST}`);
+  console.log(`  Game Server Protocol:  ${GAME_SERVER_PROTOCOL}`);
+  console.log(
+    `  Game Server URL:       ${GAME_SERVER_PROTOCOL}://${GAME_SERVER_HOST}:3000`,
+  );
+  console.log("\n⛓️  BLOCKCHAIN CONFIGURATION:");
+  console.log(
+    `  CONTRACT_ADDRESS:      ${process.env.CONTRACT_ADDRESS ?? "❌ NOT SET (will use default)"}`,
+  );
+  console.log(
+    `  RPC_URL:               ${process.env.RPC_URL ?? "❌ NOT SET (will use default)"}`,
+  );
+  console.log("\n🔐 AUTHENTICATION:");
+  console.log(
+    `  PRIVY_APP_ID:          ${process.env.PRIVY_APP_ID ? "✅ SET" : "❌ NOT SET"}`,
+  );
+  console.log(
+    `  API_DOMAIN:            ${process.env.API_DOMAIN ?? "localhost:8787 (default)"}`,
+  );
+  console.log("\n💳 PAYMENTS:");
+  console.log(
+    `  STRIPE_PUBLISHABLE_KEY: ${process.env.STRIPE_PUBLISHABLE_KEY ? "✅ SET" : "❌ NOT SET"}`,
+  );
+  console.log("=".repeat(80) + "\n");
+
+  // Validate critical env vars
+  const errors = [];
+  if (!process.env.CONTRACT_ADDRESS) {
+    errors.push(
+      "⚠️  CONTRACT_ADDRESS not set - tournaments will use default address!",
+    );
+  }
+  if (!process.env.PRIVY_APP_ID) {
+    errors.push("⚠️  PRIVY_APP_ID not set - wallet features may not work!");
+  }
+
+  if (errors.length > 0) {
+    console.error("\n❌ ENVIRONMENT WARNINGS:");
+    errors.forEach((e) => console.error(`   ${e}`));
+    console.error("\n   Set missing variables before building:");
+    console.error(`   export CONTRACT_ADDRESS=0xYourAddress`);
+    console.error(`   export PRIVY_APP_ID=your-app-id`);
+    console.error(`   npm run start:client:remote\n`);
+  }
+
   return {
     entry: "./src/client/Main.ts",
     output: {
@@ -144,6 +202,10 @@ export default async (env, argv) => {
         ),
         "process.env.API_DOMAIN": JSON.stringify(process.env.API_DOMAIN),
         "process.env.PRIVY_APP_ID": JSON.stringify(process.env.PRIVY_APP_ID),
+        "process.env.CONTRACT_ADDRESS": JSON.stringify(
+          process.env.CONTRACT_ADDRESS,
+        ),
+        "process.env.RPC_URL": JSON.stringify(process.env.RPC_URL),
         __PRIVY_APP_ID__: JSON.stringify(process.env.PRIVY_APP_ID ?? ""),
       }),
       new webpack.ProvidePlugin({
@@ -191,7 +253,7 @@ export default async (env, argv) => {
             // WebSocket proxies
             {
               context: ["/socket"],
-              target: "ws://localhost:3000",
+              target: `ws://${GAME_SERVER_HOST}:3000`,
               ws: true,
               changeOrigin: true,
               logLevel: "debug",
@@ -199,7 +261,7 @@ export default async (env, argv) => {
             // Worker WebSocket proxies - using direct paths without /socket suffix
             {
               context: ["/w0"],
-              target: "ws://localhost:3001",
+              target: `ws://${GAME_SERVER_HOST}:3001`,
               ws: true,
               secure: false,
               changeOrigin: true,
@@ -207,7 +269,7 @@ export default async (env, argv) => {
             },
             {
               context: ["/w1"],
-              target: "ws://localhost:3002",
+              target: `ws://${GAME_SERVER_HOST}:3002`,
               ws: true,
               secure: false,
               changeOrigin: true,
@@ -215,7 +277,7 @@ export default async (env, argv) => {
             },
             {
               context: ["/w2"],
-              target: "ws://localhost:3003",
+              target: `ws://${GAME_SERVER_HOST}:3003`,
               ws: true,
               secure: false,
               changeOrigin: true,
@@ -224,7 +286,7 @@ export default async (env, argv) => {
             // Worker proxies for HTTP requests
             {
               context: ["/w0"],
-              target: "http://localhost:3001",
+              target: `${GAME_SERVER_PROTOCOL}://${GAME_SERVER_HOST}:3001`,
               pathRewrite: { "^/w0": "" },
               secure: false,
               changeOrigin: true,
@@ -232,7 +294,7 @@ export default async (env, argv) => {
             },
             {
               context: ["/w1"],
-              target: "http://localhost:3002",
+              target: `${GAME_SERVER_PROTOCOL}://${GAME_SERVER_HOST}:3002`,
               pathRewrite: { "^/w1": "" },
               secure: false,
               changeOrigin: true,
@@ -240,7 +302,7 @@ export default async (env, argv) => {
             },
             {
               context: ["/w2"],
-              target: "http://localhost:3003",
+              target: `${GAME_SERVER_PROTOCOL}://${GAME_SERVER_HOST}:3003`,
               pathRewrite: { "^/w2": "" },
               secure: false,
               changeOrigin: true,
@@ -261,7 +323,7 @@ export default async (env, argv) => {
                 "/api/auth/discord",
                 "/api/kick_player",
               ],
-              target: "http://localhost:3000",
+              target: `${GAME_SERVER_PROTOCOL}://${GAME_SERVER_HOST}:3000`,
               secure: false,
               changeOrigin: true,
             },

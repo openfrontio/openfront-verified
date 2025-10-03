@@ -7,28 +7,54 @@ import {
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 import { waitForTransactionReceipt } from "viem/actions";
-import { localhost } from "viem/chains";
+import { baseSepolia } from "viem/chains";
 import { ContractABI } from "./ContractABI";
+import { logger } from "./Logger";
+
+const log = logger.child({ comp: "onchain" });
 
 // Configuration
 const RPC_URL =
   process.env.RPC_URL ?? "https://ethereum-sepolia.publicnode.com";
 const CONTRACT_ADDRESS = (process.env.CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
-const MNEMONIC = process.env.mnemonic;
+const MNEMONIC = process.env.MNEMONIC;
+
+// Always use Base Sepolia
+const chain = baseSepolia;
+
+// Log configuration on startup
+log.info("On-chain configuration:", {
+  rpcUrl: RPC_URL,
+  contractAddress: CONTRACT_ADDRESS,
+  chain: chain.name,
+  chainId: chain.id,
+  hasMnemonic: !!MNEMONIC,
+  mnemonicWords: MNEMONIC ? MNEMONIC.trim().split(/\s+/).length : 0,
+});
 
 // Derive the server account from mnemonic (HD path m/44'/60'/0'/0/0)
 const serverAccount = MNEMONIC ? mnemonicToAccount(MNEMONIC) : undefined;
 
+if (serverAccount) {
+  log.info("Server account derived from mnemonic:", {
+    address: serverAccount.address,
+  });
+} else {
+  log.warn(
+    "No mnemonic configured - server CANNOT declare winners on-chain or start games!",
+  );
+}
+
 // Clients
 export const publicClient = createPublicClient({
-  chain: localhost,
+  chain,
   transport: http(RPC_URL),
 });
 
 export const walletClient = createWalletClient({
   account: serverAccount,
-  chain: localhost,
+  chain,
   transport: http(RPC_URL),
 });
 
@@ -170,12 +196,30 @@ export async function declareWinnerOnChain(
   winnerAddress: Address,
 ): Promise<string | null> {
   try {
-    if (!serverAccount) return null;
+    if (!serverAccount) {
+      log.error(
+        "Cannot declare winner: no server account (mnemonic not configured)",
+      );
+      return null;
+    }
+
+    log.info("Declaring winner on-chain", {
+      lobbyId,
+      winnerAddress,
+      serverAccount: serverAccount.address,
+      contractAddress: CONTRACT_ADDRESS,
+    });
+
     const lobbyIdBytes32 = stringToBytes32(lobbyId);
     const maxAttempts = 3;
     let lastError: unknown = null;
+
     for (let i = 0; i < maxAttempts; i++) {
       try {
+        log.info(`Attempt ${i + 1}/${maxAttempts} to call declareWinner`, {
+          lobbyId,
+        });
+
         const hash = await walletClient.writeContract({
           account: serverAccount,
           address: CONTRACT_ADDRESS,
@@ -183,14 +227,35 @@ export async function declareWinnerOnChain(
           functionName: "declareWinner",
           args: [lobbyIdBytes32, getAddress(winnerAddress)],
         });
+
+        log.info("Transaction submitted", {
+          lobbyId,
+          txHash: hash,
+        });
+
         return hash;
       } catch (e) {
         lastError = e;
+        log.warn(`Attempt ${i + 1} failed, retrying...`, {
+          lobbyId,
+          error: e instanceof Error ? e.message : String(e),
+        });
         await new Promise((r) => setTimeout(r, 250 * (i + 1)));
       }
     }
+
+    log.error("All attempts failed to declare winner", {
+      lobbyId,
+      error: lastError instanceof Error ? lastError.message : String(lastError),
+    });
+
     throw lastError ?? new Error("declareWinner write failed");
   } catch (e) {
+    log.error("declareWinnerOnChain exception", {
+      lobbyId,
+      error: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+    });
     return null;
   }
 }
@@ -200,20 +265,80 @@ export async function declareWinnerOnChainAndConfirm(
   winnerAddress: Address,
 ): Promise<boolean> {
   try {
+    log.info("Starting declareWinnerOnChainAndConfirm", {
+      lobbyId,
+      winnerAddress,
+    });
+
     const hash = await declareWinnerOnChain(lobbyId, winnerAddress);
-    if (hash === null) return false;
+    if (hash === null) {
+      log.error("declareWinnerOnChain returned null (transaction failed)", {
+        lobbyId,
+      });
+      return false;
+    }
+
+    log.info("Waiting for transaction receipt", {
+      lobbyId,
+      txHash: hash,
+    });
+
     const receipt = await waitForTransactionReceipt(publicClient, {
       hash: hash as `0x${string}`,
     });
-    if (receipt.status !== "success") return false;
+
+    log.info("Transaction receipt received", {
+      lobbyId,
+      txHash: hash,
+      status: receipt.status,
+      blockNumber: receipt.blockNumber,
+      gasUsed: receipt.gasUsed.toString(),
+    });
+
+    if (receipt.status !== "success") {
+      log.error("Transaction reverted", {
+        lobbyId,
+        txHash: hash,
+        status: receipt.status,
+      });
+      return false;
+    }
+
     const info = await getLobbyInfo(lobbyId);
-    // Contract sets status Finished on declareWinner
-    return (
+    log.info("Verified lobby info after winner declaration", {
+      lobbyId,
+      status: info?.status,
+      statusName: info ? GameStatus[info.status] : "N/A",
+      winner: info?.winner,
+      expectedWinner: winnerAddress,
+    });
+
+    const success =
       info !== null &&
       info.status === GameStatus.Finished &&
-      info.winner !== "0x0000000000000000000000000000000000000000"
-    );
-  } catch (_e) {
+      info.winner !== "0x0000000000000000000000000000000000000000";
+
+    if (success) {
+      log.info("✅ Winner declaration CONFIRMED on-chain", {
+        lobbyId,
+        winner: info.winner,
+      });
+    } else {
+      log.error("❌ Winner declaration verification FAILED", {
+        lobbyId,
+        hasInfo: !!info,
+        status: info?.status,
+        winner: info?.winner,
+      });
+    }
+
+    return success;
+  } catch (e) {
+    log.error("declareWinnerOnChainAndConfirm exception", {
+      lobbyId,
+      error: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+    });
     return false;
   }
 }

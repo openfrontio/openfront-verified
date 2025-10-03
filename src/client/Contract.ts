@@ -13,10 +13,22 @@ import { CONTRACT_ABI } from "./constants/ContractABI";
 import { bytes32ToString, stringToBytes32 } from "./utilities/ContractHelpers";
 import { WalletManager } from "./Wallet";
 
+// Determine RPC URL from environment or use default
+const RPC_URL =
+  typeof process !== "undefined" && process.env?.RPC_URL
+    ? process.env.RPC_URL
+    : undefined;
+
+console.log("[Contract] Client blockchain config:", {
+  contractAddress: CONTRACT_ADDRESS,
+  rpcUrl: RPC_URL ?? "default (baseSepolia public node)",
+  chain: "baseSepolia",
+});
+
 // Centralized viem clients and helpers
 const publicClient = createPublicClient({
   chain: baseSepolia,
-  transport: http(),
+  transport: RPC_URL ? http(RPC_URL) : http(),
 });
 let walletClientCache: any | null = null;
 
@@ -38,25 +50,6 @@ async function wagmiRead(params: {
   args?: any[];
 }) {
   return await publicClient.readContract(params as any);
-}
-
-async function estimateGas(
-  functionName: string,
-  args: any[],
-  value?: bigint,
-): Promise<bigint> {
-  const walletManager = WalletManager.getInstance();
-  const account = walletManager.address as `0x${string}` | undefined;
-  if (!account) throw new Error("No connected wallet");
-  const base = await publicClient.estimateContractGas({
-    account,
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI as any,
-    functionName,
-    args,
-    value,
-  } as any);
-  return (base * 120n) / 100n;
 }
 
 async function wagmiWrite(params: {
@@ -153,33 +146,64 @@ export async function createLobby(
   const lobbyIdBytes32 = stringToBytes32(lobbyId);
   const isPublic = lobbyVisibility === "public" ? true : false;
 
-  console.log("Creating lobby with:", {
+  console.log("Creating lobby on-chain:", {
     lobbyId,
     lobbyIdBytes32,
     betAmount,
     betAmountWei: betAmountWei.toString(),
+    contractAddress: CONTRACT_ADDRESS,
   });
-  console.log("Contract Address:", CONTRACT_ADDRESS);
 
+  // Let wallet auto-estimate gas (more reliable than manual estimation)
   const hash = await wagmiWrite({
     address: CONTRACT_ADDRESS,
     abi: CONTRACT_ABI,
     functionName: "createLobby",
     args: [lobbyIdBytes32, betAmountWei, isPublic],
-    // viem's WriteContractParameters value is optional in types; use explicit cast to satisfy wrapper any
     value: betAmountWei as any,
-    gas: await estimateGas(
-      "createLobby",
-      [lobbyIdBytes32, betAmountWei, isPublic],
-      betAmountWei,
-    ),
+    // Removed manual gas estimation - let wallet/provider handle it
   });
 
-  return {
-    hash,
+  console.log("Transaction submitted, polling for confirmation...", {
+    txHash: hash,
     lobbyId,
-    betAmount,
-  };
+  });
+
+  // Poll for lobby to exist on-chain instead of waiting for receipt
+  // (more reliable with custom RPCs)
+  const maxAttempts = 30;
+  const pollInterval = 2000; // 2 seconds
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    console.log(
+      `Checking if lobby exists on-chain (attempt ${attempt}/${maxAttempts})...`,
+    );
+
+    const lobbyInfo = await getLobbyInfo(lobbyId);
+
+    if (lobbyInfo && lobbyInfo.exists) {
+      console.log("✅ Lobby created on-chain successfully!", {
+        lobbyId,
+        txHash: hash,
+        host: lobbyInfo.host,
+        betAmount: formatEther(lobbyInfo.betAmount),
+        participants: lobbyInfo.participants.length,
+        attemptsTaken: attempt,
+      });
+
+      return { hash, lobbyId, betAmount };
+    }
+
+    // Wait before next attempt
+    if (attempt < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    }
+  }
+
+  // If we get here, polling timed out
+  throw new Error(
+    `Transaction sent (${hash}) but lobby not confirmed on-chain after ${(maxAttempts * pollInterval) / 1000}s. Check block explorer.`,
+  );
 }
 
 export enum GameStatus {
@@ -326,7 +350,7 @@ export async function joinLobby(
       functionName: "joinLobby",
       args: [lobbyIdBytes32],
       value: betAmount as any, // Pay the exact bet amount required by the lobby
-      gas: await estimateGas("joinLobby", [lobbyIdBytes32], betAmount),
+      // Let wallet auto-estimate gas
     });
 
     console.log("Successfully joined lobby, transaction hash:", hash);
@@ -383,7 +407,7 @@ export async function claimPrize(
       abi: CONTRACT_ABI,
       functionName: "claimPrize",
       args: [lobbyIdBytes32],
-      gas: await estimateGas("claimPrize", [lobbyIdBytes32]),
+      // Let wallet auto-estimate gas
     });
 
     console.log("Successfully claimed prize, transaction hash:", hash);
@@ -452,10 +476,7 @@ export async function declareWinner(
       abi: CONTRACT_ABI,
       functionName: "declareWinner",
       args: [lobbyIdBytes32, winner as `0x${string}`],
-      gas: await estimateGas("declareWinner", [
-        lobbyIdBytes32,
-        winner as `0x${string}`,
-      ]),
+      // Let wallet auto-estimate gas
     });
 
     console.log("Successfully declared winner, transaction hash:", hash);
@@ -588,16 +609,47 @@ export async function startGame(
       abi: CONTRACT_ABI,
       functionName: "startGame",
       args: [lobbyIdBytes32],
-      gas: await estimateGas("startGame", [lobbyIdBytes32]),
+      // Let wallet auto-estimate gas
     });
 
-    console.log("Successfully started game, transaction hash:", hash);
-
-    return {
-      hash,
+    console.log("Transaction submitted, polling for confirmation...", {
+      txHash: hash,
       lobbyId,
-      playerAddress: walletManager.address!,
-    };
+    });
+
+    // Poll for game status to change to InProgress
+    const maxAttempts = 30;
+    const pollInterval = 2000; // 2 seconds
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(
+        `Checking if game started on-chain (attempt ${attempt}/${maxAttempts})...`,
+      );
+
+      const lobbyInfo = await getLobbyInfo(lobbyId);
+
+      if (lobbyInfo && lobbyInfo.status === GameStatus.InProgress) {
+        console.log("✅ Game started on-chain successfully!", {
+          lobbyId,
+          txHash: hash,
+          status: GameStatus[lobbyInfo.status],
+          participants: lobbyInfo.participants.length,
+          attemptsTaken: attempt,
+        });
+
+        return { hash, lobbyId, playerAddress: walletManager.address! };
+      }
+
+      // Wait before next attempt
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      }
+    }
+
+    // Polling timed out
+    throw new Error(
+      `Transaction sent (${hash}) but game status not updated after ${(maxAttempts * pollInterval) / 1000}s. Check block explorer.`,
+    );
   } catch (error: any) {
     console.error("Failed to start game:", error);
 

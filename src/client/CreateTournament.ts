@@ -281,10 +281,10 @@ export class CreateTournamentModal extends LitElement {
               ${translateText("host_modal.options_title")}
             </div>
             <div class="option-cards">
-              <label for="bots-count" class="option-card">
+              <label for="tournament-bots-count" class="option-card">
                 <input
                   type="range"
-                  id="bots-count"
+                  id="tournament-bots-count"
                   min="0"
                   max="400"
                   step="1"
@@ -301,15 +301,15 @@ export class CreateTournamentModal extends LitElement {
                 </div>
               </label>
 
-                <label
-                  for="disable-npcs"
+              <label
+                for="tournament-disable-npcs"
                   class="option-card ${this.disableNPCs ? "selected" : ""}"
                 >
                   <div class="checkbox-icon"></div>
                   <input
                     type="checkbox"
-                    id="disable-npcs"
-                    @change=${this.handleDisableNPCsChange}
+                  id="tournament-disable-npcs"
+                    @input=${this.handleDisableNPCsChange}
                     .checked=${this.disableNPCs}
                   />
                   <div class="option-card-title">
@@ -318,14 +318,14 @@ export class CreateTournamentModal extends LitElement {
                 </label>
 
                 <label
-                  for="instant-build"
+                  for="tournament-instant-build"
                   class="option-card ${this.instantBuild ? "selected" : ""}"
                 >
                   <div class="checkbox-icon"></div>
                   <input
                     type="checkbox"
-                    id="instant-build"
-                    @change=${this.handleInstantBuildChange}
+                    id="tournament-instant-build"
+                    @input=${this.handleInstantBuildChange}
                     .checked=${this.instantBuild}
                   />
                   <div class="option-card-title">
@@ -334,14 +334,14 @@ export class CreateTournamentModal extends LitElement {
                 </label>
 
                 <label
-                  for="donate-gold"
+                  for="tournament-donate-gold"
                   class="option-card ${this.donateGold ? "selected" : ""}"
                 >
                   <div class="checkbox-icon"></div>
                   <input
                     type="checkbox"
-                    id="donate-gold"
-                    @change=${this.handleDonateGoldChange}
+                    id="tournament-donate-gold"
+                    @input=${this.handleDonateGoldChange}
                     .checked=${this.donateGold}
                   />
                   <div class="option-card-title">
@@ -350,14 +350,14 @@ export class CreateTournamentModal extends LitElement {
                 </label>
 
                 <label
-                  for="donate-troops"
+                  for="tournament-donate-troops"
                   class="option-card ${this.donateTroops ? "selected" : ""}"
                 >
                   <div class="checkbox-icon"></div>
                   <input
                     type="checkbox"
-                    id="donate-troops"
-                    @change=${this.handleDonateTroopsChange}
+                    id="tournament-donate-troops"
+                    @input=${this.handleDonateTroopsChange}
                     .checked=${this.donateTroops}
                   />
                   <div class="option-card-title">
@@ -366,14 +366,14 @@ export class CreateTournamentModal extends LitElement {
                 </label>
 
                 <label
-                  for="infinite-gold"
+                  for="tournament-infinite-gold"
                   class="option-card ${this.infiniteGold ? "selected" : ""}"
                 >
                   <div class="checkbox-icon"></div>
                   <input
                     type="checkbox"
-                    id="infinite-gold"
-                    @change=${this.handleInfiniteGoldChange}
+                    id="tournament-infinite-gold"
+                    @input=${this.handleInfiniteGoldChange}
                     .checked=${this.infiniteGold}
                   />
                   <div class="option-card-title">
@@ -381,15 +381,15 @@ export class CreateTournamentModal extends LitElement {
                   </div>
                 </label>
 
-                <label
-                  for="infinite-troops"
+              <label
+                for="tournament-infinite-troops"
                   class="option-card ${this.infiniteTroops ? "selected" : ""}"
                 >
                   <div class="checkbox-icon"></div>
                   <input
                     type="checkbox"
-                    id="infinite-troops"
-                    @change=${this.handleInfiniteTroopsChange}
+                  id="tournament-infinite-troops"
+                    @input=${this.handleInfiniteTroopsChange}
                     .checked=${this.infiniteTroops}
                   />
                   <div class="option-card-title">
@@ -397,14 +397,14 @@ export class CreateTournamentModal extends LitElement {
                   </div>
                 </label>
                 <label
-                for="host-modal-compact-map"
+                for="tournament-compact-map"
                 class="option-card ${this.compactMap ? "selected" : ""}"
               >
                 <div class="checkbox-icon"></div>
                 <input
                   type="checkbox"
-                  id="host-modal-compact-map"
-                  @change=${this.handleCompactMapChange}
+                  id="tournament-compact-map"
+                  @input=${this.handleCompactMapChange}
                   .checked=${this.compactMap}
                 />
                 <div class="option-card-title">
@@ -619,33 +619,81 @@ export class CreateTournamentModal extends LitElement {
   }
 
   private handleInstantBuildChange(e: Event) {
-    this.instantBuild = Boolean((e.target as HTMLInputElement).checked);
-    this.putGameConfig();
+    const target = e.target as HTMLInputElement;
+    const newValue = Boolean(target.checked);
+    console.log(
+      `[CreateTournament] instantBuild handler fired! checked=${target.checked}, newValue=${newValue}`,
+    );
+    this.instantBuild = newValue;
+    this.requestUpdate();
+    if (this.lobbyId) {
+      this.putGameConfig();
+    }
   }
 
   private handleInfiniteGoldChange(e: Event) {
-    this.infiniteGold = Boolean((e.target as HTMLInputElement).checked);
-    this.putGameConfig();
+    const target = e.target as HTMLInputElement;
+    const newValue = Boolean(target.checked);
+    console.log(
+      `[CreateTournament] infiniteGold handler fired! checked=${target.checked}, newValue=${newValue}`,
+    );
+    this.infiniteGold = newValue;
+    this.requestUpdate();
+    if (this.lobbyId) {
+      this.putGameConfig();
+    }
   }
 
   private handleDonateGoldChange(e: Event) {
-    this.donateGold = Boolean((e.target as HTMLInputElement).checked);
-    this.putGameConfig();
+    const target = e.target as HTMLInputElement;
+    const newValue = Boolean(target.checked);
+    console.log(
+      `[CreateTournament] donateGold handler fired! checked=${target.checked}, newValue=${newValue}`,
+    );
+    this.donateGold = newValue;
+    this.requestUpdate();
+    if (this.lobbyId) {
+      this.putGameConfig();
+    }
   }
 
   private handleInfiniteTroopsChange(e: Event) {
-    this.infiniteTroops = Boolean((e.target as HTMLInputElement).checked);
-    this.putGameConfig();
+    const target = e.target as HTMLInputElement;
+    const newValue = Boolean(target.checked);
+    console.log(
+      `[CreateTournament] infiniteTroops handler fired! checked=${target.checked}, newValue=${newValue}`,
+    );
+    this.infiniteTroops = newValue;
+    this.requestUpdate();
+    if (this.lobbyId) {
+      this.putGameConfig();
+    }
   }
 
   private handleCompactMapChange(e: Event) {
-    this.compactMap = Boolean((e.target as HTMLInputElement).checked);
-    this.putGameConfig();
+    const target = e.target as HTMLInputElement;
+    const newValue = Boolean(target.checked);
+    console.log(
+      `[CreateTournament] compactMap handler fired! checked=${target.checked}, newValue=${newValue}`,
+    );
+    this.compactMap = newValue;
+    this.requestUpdate();
+    if (this.lobbyId) {
+      this.putGameConfig();
+    }
   }
 
   private handleDonateTroopsChange(e: Event) {
-    this.donateTroops = Boolean((e.target as HTMLInputElement).checked);
-    this.putGameConfig();
+    const target = e.target as HTMLInputElement;
+    const newValue = Boolean(target.checked);
+    console.log(
+      `[CreateTournament] donateTroops handler fired! checked=${target.checked}, newValue=${newValue}`,
+    );
+    this.donateTroops = newValue;
+    this.requestUpdate();
+    if (this.lobbyId) {
+      this.putGameConfig();
+    }
   }
 
   private async handleDisableNPCsChange(e: Event) {
@@ -667,6 +715,27 @@ export class CreateTournamentModal extends LitElement {
   private async putGameConfig() {
     if (!this.lobbyId) return;
     const config = await getServerConfigFromClient();
+    const gameConfig = {
+      gameMap: this.selectedMap,
+      gameMapSize: this.compactMap ? GameMapSize.Compact : GameMapSize.Normal,
+      difficulty: this.selectedDifficulty,
+      disableNPCs: this.disableNPCs,
+      bots: this.bots,
+      infiniteGold: this.infiniteGold,
+      donateGold: this.donateGold,
+      infiniteTroops: this.infiniteTroops,
+      donateTroops: this.donateTroops,
+      instantBuild: this.instantBuild,
+      gameMode: this.gameMode,
+      disabledUnits: this.disabledUnits,
+      playerTeams: this.teamCount,
+    } satisfies Partial<GameConfig>;
+
+    console.log(
+      `[CreateTournament] Sending game config to server:`,
+      gameConfig,
+    );
+
     const response = await fetch(
       `${window.location.origin}/${config.workerPath(this.lobbyId)}/api/game/${this.lobbyId}`,
       {
@@ -674,25 +743,18 @@ export class CreateTournamentModal extends LitElement {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          gameMap: this.selectedMap,
-          gameMapSize: this.compactMap
-            ? GameMapSize.Compact
-            : GameMapSize.Normal,
-          difficulty: this.selectedDifficulty,
-          disableNPCs: this.disableNPCs,
-          bots: this.bots,
-          infiniteGold: this.infiniteGold,
-          donateGold: this.donateGold,
-          infiniteTroops: this.infiniteTroops,
-          donateTroops: this.donateTroops,
-          instantBuild: this.instantBuild,
-          gameMode: this.gameMode,
-          disabledUnits: this.disabledUnits,
-          playerTeams: this.teamCount,
-        } satisfies Partial<GameConfig>),
+        body: JSON.stringify(gameConfig),
       },
     );
+
+    if (!response.ok) {
+      console.error(
+        `[CreateTournament] Failed to update game config: ${response.status} ${response.statusText}`,
+      );
+      throw new Error(`Failed to update game config: ${response.statusText}`);
+    }
+
+    console.log(`[CreateTournament] Game config updated successfully`);
     return response;
   }
 
@@ -817,6 +879,9 @@ export class CreateTournamentModal extends LitElement {
       console.error("Server error response:", errorText);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
+
+    // 3) Apply user's game configuration settings
+    await this.putGameConfig();
 
     // Start polling players once created
     this.playersInterval ??= setInterval(() => this.pollPlayers(), 1000) as any;

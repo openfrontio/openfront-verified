@@ -3,12 +3,19 @@ import * as dotenv from "dotenv";
 import { GameEnv } from "../core/configuration/Config";
 import { getServerConfigFromServer } from "../core/configuration/ConfigLoader";
 import { Cloudflare, TunnelConfig } from "./Cloudflare";
+import { validateEnvironmentOrExit } from "./EnvValidator";
 import { startMaster } from "./Master";
 import { startWorker } from "./Worker";
 
+// Load environment variables FIRST
+dotenv.config();
+
 const config = getServerConfigFromServer();
 
-dotenv.config();
+// Validate environment variables based on the current environment
+if (cluster.isPrimary) {
+  validateEnvironmentOrExit(config.env());
+}
 
 // Main entry point of the application
 async function main() {

@@ -8,16 +8,16 @@ contract DeployOpenfront is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
+        address gameServer = vm.envAddress("GAME_SERVER_WALLET");
         
         console.log("Deploying Openfront contract...");
         console.log("Deployer address:", deployer);
         console.log("Deployer balance:", deployer.balance);
+        console.log("Game server address:", gameServer);
         
         vm.startBroadcast(deployerPrivateKey);
         
-        // For local deployment, we'll use the deployer as the game server initially
-        // This can be changed later using setGameServer() function
-        Openfront openfront = new Openfront(deployer);
+        Openfront openfront = new Openfront(gameServer);
         
         vm.stopBroadcast();
         

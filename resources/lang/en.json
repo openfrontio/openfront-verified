@@ -472,7 +472,12 @@
     "other_won": "{player} has won!",
     "exit": "Exit Game",
     "keep": "Keep Playing",
-    "wishlist": "Wishlist on Steam!"
+    "wishlist": "Wishlist on Steam!",
+    "checking_claim": "Checking prize eligibility...",
+    "claiming": "Claiming prize...",
+    "claim_prize": "Claim Prize",
+    "claim_success": "Prize claimed successfully! Check your wallet.",
+    "claim_timeout": "Unable to verify prize claim. The server may still be processing the winner declaration, or the winner hasn't linked their wallet."
   },
   "leaderboard": {
     "title": "Leaderboard",

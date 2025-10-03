@@ -42,7 +42,15 @@ export class WinModal extends LitElement implements Layer {
   @state()
   private claimMsg: string = "";
 
+  @state()
+  private checkingClaim: boolean = false;
+
+  @state()
+  private isTournament: boolean = false;
+
   private _title: string;
+
+  private claimCheckInterval: number | null = null;
 
   // Override to prevent shadow DOM creation
   createRenderRoot() {
@@ -60,10 +68,26 @@ export class WinModal extends LitElement implements Layer {
           ? "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gray-800/70 p-6 rounded-lg z-[9999] shadow-2xl backdrop-blur-sm text-white w-[350px] max-w-[90%] md:w-[700px] md:max-w-[700px] animate-fadeIn"
           : "hidden"}"
       >
+        ${this.isTournament
+          ? html`<div class="mb-2 text-center">
+              <span
+                class="inline-block px-3 py-1 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold text-sm rounded-full"
+              >
+                🏆 TOURNAMENT
+              </span>
+            </div>`
+          : html``}
         <h2 class="m-0 mb-4 text-[26px] text-center text-white">
           ${this._title ?? ""}
         </h2>
         ${this.innerHtml()}
+        ${this.checkingClaim && !this.showButtons
+          ? html`<div
+              class="mt-3 text-center text-base text-blue-400 animate-pulse"
+            >
+              🔍 ${translateText("win_modal.checking_claim")}
+            </div>`
+          : html``}
         <div
           class="${this.showButtons
             ? "flex justify-between gap-2.5"
@@ -76,10 +100,18 @@ export class WinModal extends LitElement implements Layer {
                 ?disabled=${this.isClaiming}
               >
                 ${this.isClaiming
-                  ? (translateText("win_modal.claiming") ?? "Claiming...")
-                  : (translateText("win_modal.claim_prize") ?? "Claim Prize")}
+                  ? translateText("win_modal.claiming")
+                  : translateText("win_modal.claim_prize")}
               </button>`
-            : html``}
+            : this.checkingClaim
+              ? html`<div
+                  class="flex-1 px-3 py-3 text-base text-center bg-blue-500/40 text-white border-0 rounded"
+                >
+                  <span class="animate-pulse"
+                    >🔍 ${translateText("win_modal.checking_claim")}</span
+                  >
+                </div>`
+              : html``}
           <button
             @click=${this._handleExit}
             class="flex-1 px-3 py-3 text-base cursor-pointer bg-blue-500/60 text-white border-0 rounded transition-all duration-200 hover:bg-blue-500/80 hover:-translate-y-px active:translate-y-px"
@@ -94,7 +126,11 @@ export class WinModal extends LitElement implements Layer {
           </button>
         </div>
         ${this.claimMsg
-          ? html`<div class="mt-3 text-center text-sm text-white">
+          ? html`<div
+              class="mt-3 text-center text-sm ${this.showClaimButton
+                ? "text-green-400"
+                : "text-yellow-400"}"
+            >
               ${this.claimMsg}
             </div>`
           : html``}
@@ -214,32 +250,160 @@ export class WinModal extends LitElement implements Layer {
 
   async show() {
     await this.loadPatternContent();
-    // Enable claim button if on-chain lobby is Finished and you are winner
-    try {
-      const lobbyId = this.game.gameID();
-      const info = await getLobbyInfo(lobbyId);
-      const myAddr = WalletManager.getInstance().address?.toLowerCase();
-      this.showClaimButton = Boolean(
-        info &&
-          info.status === GameStatus.Finished &&
-          info.winner &&
-          info.winner.toLowerCase() !==
-            "0x0000000000000000000000000000000000000000" &&
-          myAddr &&
-          info.winner.toLowerCase() === myAddr,
-      );
-    } catch (_e) {
-      this.showClaimButton = false;
-    }
     this.isVisible = true;
     this.requestUpdate();
+
+    // Start checking for claim eligibility
+    this.startClaimCheck();
+
     setTimeout(() => {
       this.showButtons = true;
       this.requestUpdate();
     }, 3000);
   }
 
+  private async startClaimCheck() {
+    this.checkingClaim = true;
+    this.requestUpdate();
+
+    // Check immediately
+    await this.checkClaimEligibility();
+
+    // If claim button showed up immediately, stop checking
+    if (this.showClaimButton) {
+      this.checkingClaim = false;
+      this.claimMsg = "";
+      this.requestUpdate();
+      return;
+    }
+
+    // Otherwise, poll every 2 seconds for up to 30 seconds
+    let attempts = 0;
+    const maxAttempts = 15;
+
+    this.claimCheckInterval = window.setInterval(async () => {
+      attempts++;
+      console.log(
+        `[WinModal] Polling for on-chain winner declaration (attempt ${attempts}/${maxAttempts})...`,
+      );
+      await this.checkClaimEligibility();
+
+      if (this.showClaimButton) {
+        // Winner declared! Stop polling
+        this.stopClaimCheck();
+        this.claimMsg = "";
+        this.requestUpdate();
+      } else if (attempts >= maxAttempts) {
+        // Timeout
+        this.stopClaimCheck();
+        this.claimMsg = translateText("win_modal.claim_timeout");
+        this.requestUpdate();
+      }
+    }, 2000);
+  }
+
+  private stopClaimCheck() {
+    if (this.claimCheckInterval !== null) {
+      clearInterval(this.claimCheckInterval);
+      this.claimCheckInterval = null;
+      this.checkingClaim = false;
+      this.requestUpdate();
+    }
+  }
+
+  private async checkClaimEligibility() {
+    try {
+      const lobbyId = this.game.gameID();
+      const info = await getLobbyInfo(lobbyId);
+      const myAddr = WalletManager.getInstance().address?.toLowerCase();
+
+      console.log(`[WinModal] Checking claim eligibility:`, {
+        lobbyId,
+        exists: info?.exists,
+        status: info?.status,
+        statusName: info ? GameStatus[info.status] : "N/A",
+        winner: info?.winner,
+        myAddress: myAddr,
+        isMatch: info?.winner?.toLowerCase() === myAddr,
+      });
+
+      // If no lobby on-chain, this is not a tournament
+      if (!info || !info.exists) {
+        console.log(`[WinModal] ℹ️ No on-chain lobby found (not a tournament)`);
+        this.isTournament = false;
+        this.showClaimButton = false;
+        this.checkingClaim = false;
+        this.claimMsg =
+          "This was a regular game, not a tournament. No prize to claim.";
+        this.requestUpdate();
+        return;
+      }
+
+      // Mark as tournament
+      this.isTournament = true;
+
+      // Check if you have a wallet connected
+      if (!myAddr) {
+        console.log(`[WinModal] ⚠️ No wallet connected`);
+        this.claimMsg = "Connect your wallet to claim prizes";
+        this.showClaimButton = false;
+        this.checkingClaim = false;
+        this.requestUpdate();
+        return;
+      }
+
+      const isEligible = Boolean(
+        info.status === GameStatus.Finished &&
+          info.winner &&
+          info.winner.toLowerCase() !==
+            "0x0000000000000000000000000000000000000000" &&
+          info.winner.toLowerCase() === myAddr,
+      );
+
+      if (isEligible && !this.showClaimButton) {
+        console.log(
+          `[WinModal] ✅ Claim button now available! Winner: ${info.winner}`,
+        );
+      } else if (!isEligible) {
+        const reasons = {
+          hasInfo: !!info,
+          exists: info.exists,
+          isFinished: info.status === GameStatus.Finished,
+          statusName: GameStatus[info.status],
+          hasWinner: !!info.winner,
+          isNotZero:
+            info.winner?.toLowerCase() !==
+            "0x0000000000000000000000000000000000000000",
+          hasWallet: !!myAddr,
+          addressMatch: info.winner?.toLowerCase() === myAddr,
+        };
+        console.log(`[WinModal] ❌ Not eligible yet. Reason:`, reasons);
+
+        // Provide specific feedback
+        if (info.status === GameStatus.InProgress) {
+          this.claimMsg = "⏳ Waiting for server to declare winner on-chain...";
+        } else if (info.status === GameStatus.Created) {
+          this.claimMsg = "Game hasn't started on-chain yet";
+        } else if (info.status === GameStatus.Claimed) {
+          this.claimMsg = "Prize already claimed";
+        } else if (info.winner?.toLowerCase() !== myAddr) {
+          this.claimMsg = "You are not the winner of this tournament";
+        }
+        this.requestUpdate();
+      }
+
+      this.showClaimButton = isEligible;
+      this.requestUpdate();
+    } catch (e) {
+      console.error(`[WinModal] Error checking claim eligibility:`, e);
+      this.showClaimButton = false;
+      this.claimMsg = `Error checking prize: ${e instanceof Error ? e.message : String(e)}`;
+      this.requestUpdate();
+    }
+  }
+
   hide() {
+    this.stopClaimCheck();
     this.isVisible = false;
     this.showButtons = false;
     this.requestUpdate();
@@ -254,12 +418,10 @@ export class WinModal extends LitElement implements Layer {
     if (this.isClaiming) return;
     try {
       this.isClaiming = true;
-      this.claimMsg = translateText("win_modal.claiming") ?? "Claiming...";
+      this.claimMsg = translateText("win_modal.claiming");
       const lobbyId = this.game.gameID();
       await claimPrize({ lobbyId });
-      this.claimMsg =
-        translateText("win_modal.claim_success") ??
-        "Prize claimed successfully.";
+      this.claimMsg = translateText("win_modal.claim_success");
       this.showClaimButton = false;
     } catch (e: any) {
       this.claimMsg = e?.message ?? "Failed to claim prize.";

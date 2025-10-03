@@ -44,6 +44,7 @@ import "./components/NewsButton";
 import { NewsButton } from "./components/NewsButton";
 import "./components/baseComponents/Button";
 import "./components/baseComponents/Modal";
+import { logBlockchainConfig } from "./constants/Config";
 import { discordLogin, getUserMe, isLoggedIn } from "./jwt";
 import "./styles.css";
 
@@ -429,7 +430,7 @@ class Client {
 
     document
       .querySelectorAll<HTMLInputElement>(
-        "#bots-count, #private-lobby-bots-count",
+        "#bots-count, #private-lobby-bots-count, #tournament-bots-count",
       )
       .forEach((slider) => {
         updateSliderProgress(slider);
@@ -649,6 +650,9 @@ class Client {
 
 // Initialize the client when the DOM is loaded
 document.addEventListener("DOMContentLoaded", () => {
+  // Log blockchain configuration on startup
+  logBlockchainConfig();
+
   // Ensure Privy is initialized so wallet UI is visible and window.privyWallet is available
   try {
     initializePrivy();
