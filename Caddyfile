@@ -1,0 +1,160 @@
+# Caddy configuration for OpenFront with HTTPS
+# Set DOMAIN environment variable to your domain (e.g., api.eigenarcade.com)
+
+{$DOMAIN:localhost} {
+    # TLS configuration - automatic HTTPS
+    # Caddy will automatically obtain Let's Encrypt certificates
+    # No manual certificate management needed
+
+    # Worker routing - route /wN/ to port 3001+N
+    # Dev mode uses 2 workers (w0, w1), prod uses up to 20
+    @worker0 path /w0/*
+    handle @worker0 {
+        reverse_proxy localhost:3001
+    }
+    
+    @worker1 path /w1/*
+    handle @worker1 {
+        reverse_proxy localhost:3002
+    }
+    
+    @worker2 path /w2/*
+    handle @worker2 {
+        reverse_proxy localhost:3003
+    }
+    
+    @worker3 path /w3/*
+    handle @worker3 {
+        reverse_proxy localhost:3004
+    }
+    
+    @worker4 path /w4/*
+    handle @worker4 {
+        reverse_proxy localhost:3005
+    }
+    
+    @worker5 path /w5/*
+    handle @worker5 {
+        reverse_proxy localhost:3006
+    }
+    
+    @worker6 path /w6/*
+    handle @worker6 {
+        reverse_proxy localhost:3007
+    }
+    
+    @worker7 path /w7/*
+    handle @worker7 {
+        reverse_proxy localhost:3008
+    }
+    
+    @worker8 path /w8/*
+    handle @worker8 {
+        reverse_proxy localhost:3009
+    }
+    
+    @worker9 path /w9/*
+    handle @worker9 {
+        reverse_proxy localhost:3010
+    }
+    
+    @worker10 path /w10/*
+    handle @worker10 {
+        reverse_proxy localhost:3011
+    }
+    
+    @worker11 path /w11/*
+    handle @worker11 {
+        reverse_proxy localhost:3012
+    }
+    
+    @worker12 path /w12/*
+    handle @worker12 {
+        reverse_proxy localhost:3013
+    }
+    
+    @worker13 path /w13/*
+    handle @worker13 {
+        reverse_proxy localhost:3014
+    }
+    
+    @worker14 path /w14/*
+    handle @worker14 {
+        reverse_proxy localhost:3015
+    }
+    
+    @worker15 path /w15/*
+    handle @worker15 {
+        reverse_proxy localhost:3016
+    }
+    
+    @worker16 path /w16/*
+    handle @worker16 {
+        reverse_proxy localhost:3017
+    }
+    
+    @worker17 path /w17/*
+    handle @worker17 {
+        reverse_proxy localhost:3018
+    }
+    
+    @worker18 path /w18/*
+    handle @worker18 {
+        reverse_proxy localhost:3019
+    }
+    
+    @worker19 path /w19/*
+    handle @worker19 {
+        reverse_proxy localhost:3020
+    }
+
+    # API and static files - master process
+    handle {
+        reverse_proxy localhost:3000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            # X-Forwarded-For and X-Forwarded-Proto are passed automatically by Caddy
+        }
+    }
+
+    # Custom headers for security
+    header {
+        # Security headers
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        
+        # CORS for WebSocket and API access
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Authorization"
+        
+        # Remove server header
+        -Server
+    }
+
+    # Logging
+    log {
+        output stdout
+        format console
+        level INFO
+    }
+
+    # Request size limits
+    request_body {
+        max_size 10MB
+    }
+}
+
+# HTTP endpoint (optional, for health checks or redirects)
+:80 {
+    # Redirect to HTTPS only when host isn't localhost
+    @for_domain expression {host} != "localhost"
+    redir @for_domain https://{host}{uri} permanent
+
+    # Health check endpoint (always available via HTTP)
+    handle /health {
+        respond "OK" 200
+    }
+}

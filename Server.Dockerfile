@@ -42,6 +42,13 @@ FROM base
 ARG GIT_COMMIT=unknown
 ENV GIT_COMMIT="$GIT_COMMIT"
 
+# Install CA certificates and update certificate store
+RUN apt-get update && apt-get install -y \
+  ca-certificates \
+  curl \
+  && rm -rf /var/lib/apt/lists/* \
+  && update-ca-certificates
+
 # Copy production dependencies
 COPY --from=dependencies /usr/src/app/node_modules ./node_modules
 COPY package.json ./
@@ -65,9 +72,9 @@ ENV WALLET_LINK_FILE=/tmp/openfront-data/wallet-links.json
 EXPOSE 3000
 EXPOSE 3001-3020
 
-# Health check
+# Health check - use public_lobbies endpoint which always exists
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+  CMD node -e "require('http').get('http://localhost:3000/api/public_lobbies', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 # Switch to node user for security
 USER node
