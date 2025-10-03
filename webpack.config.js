@@ -16,8 +16,15 @@ const __dirname = path.dirname(__filename);
 // Load .env so DefinePlugin can inject client-side env values
 dotenv.config();
 
-const gitCommit =
-  process.env.GIT_COMMIT ?? execSync("git rev-parse HEAD").toString().trim();
+// Get git commit hash - handle Vercel environment (no .git directory)
+let gitCommit = process.env.GIT_COMMIT ?? process.env.VERCEL_GIT_COMMIT_SHA;
+if (!gitCommit) {
+  try {
+    gitCommit = execSync("git rev-parse HEAD").toString().trim();
+  } catch (error) {
+    gitCommit = "unknown";
+  }
+}
 
 export default async (env, argv) => {
   const isProduction = argv.mode === "production";
