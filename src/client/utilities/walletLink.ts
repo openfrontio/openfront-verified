@@ -53,13 +53,11 @@ export async function linkWalletIfNeeded(address: string): Promise<void> {
 
     const authHeader = getAuthOrPersistentHeader();
     if (!authHeader) {
-      console.error(
-        "❌ [walletLink] No authorization header - cannot link wallet",
+      console.warn("⚠️ [walletLink] No authorization - skipping wallet link");
+      console.warn(
+        "   User can still play. Link wallet by logging in with Discord first.",
       );
-      console.error("   No persistent ID cookie found!");
-      alert(
-        "⚠️ Wallet linking failed: No persistent ID. Please refresh the page.",
-      );
+      // Don't block user - they can play without backend wallet link
       return;
     }
 
