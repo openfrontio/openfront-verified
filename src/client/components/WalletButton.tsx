@@ -7,6 +7,7 @@ export function WalletButton() {
   const { authenticated, user, login, logout, ready } = usePrivy();
   const { wallets } = useWallets();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const address = wallets[0]?.address;
   const [balanceWei, setBalanceWei] = useState<bigint | undefined>(undefined);
@@ -57,26 +58,14 @@ export function WalletButton() {
     }
   };
 
-  const handleFund = async () => {
+  const handleCopyAddress = async () => {
     try {
       if (!address) return;
-      try {
-        await navigator.clipboard.writeText(address);
-      } catch (e) {
-        /* ignore clipboard errors */
-      }
-      await fundWallet({
-        address,
-        chain: baseSepolia,
-        amount: "0.01",
-        uiConfig: {
-          receiveFundsTitle: "Fund your wallet",
-          receiveFundsSubtitle:
-            "Scan the code or copy your address to receive ETH on Base Sepolia.",
-        },
-      } as any);
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch (e) {
-      console.error("Fund wallet error:", e);
+      console.error("Copy address error:", e);
     }
   };
 
@@ -188,7 +177,7 @@ export function WalletButton() {
 
             <div className="dropdown-divider"></div>
 
-            <button className="logout-button" onClick={handleFund}>
+            <button className="logout-button" onClick={handleCopyAddress}>
               <svg
                 className="logout-icon"
                 viewBox="0 0 24 24"
@@ -196,11 +185,11 @@ export function WalletButton() {
                 xmlns="http://www.w3.org/2000/svg"
               >
                 <path
-                  d="M12 1L9 4H6C4.9 4 4 4.9 4 6V18C4 19.1 4.9 20 6 20H18C19.1 20 20 19.1 20 18V6C20 4.9 19.1 4 18 4H15L12 1Z"
+                  d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"
                   fill="currentColor"
                 />
               </svg>
-              Add Funds
+              {copied ? "Copied!" : "Copy Address"}
             </button>
 
             <div className="dropdown-divider"></div>

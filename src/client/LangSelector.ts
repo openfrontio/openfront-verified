@@ -206,9 +206,6 @@ export class LangSelector extends LitElement {
 
   private applyTranslation() {
     const components = [
-      "single-player-modal",
-      "host-lobby-modal",
-      "join-private-lobby-modal",
       "emoji-table",
       "leader-board",
       "build-menu",
@@ -220,11 +217,11 @@ export class LangSelector extends LitElement {
       "help-modal",
       "settings-modal",
       "username-input",
-      "public-lobby",
       "user-setting",
       "o-modal",
       "o-button",
       "territory-patterns-modal",
+      "join-private-tournament-modal",
     ];
 
     document.title = this.translateText("main.title") ?? document.title;

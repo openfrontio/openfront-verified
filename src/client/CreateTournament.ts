@@ -55,8 +55,11 @@ export class CreateTournamentModal extends LitElement {
   @state() private disabledUnits: UnitType[] = [];
   @state() private lobbyCreatorClientID: string = "";
   @state() private lobbyIdVisible: boolean = true;
-  @state() private betAmount: string = "0.01";
-  @state() private lobbyVisibility: "private" | "public" = "private";
+  @state() private betAmount: string = "0.001";
+  @state() private lobbyVisibility: "private" | "public" = "public";
+  @state() private ethPriceUSD: number | null = null;
+  @state() private isCreating: boolean = false;
+  @state() private creationSuccess: boolean = false;
 
   private playersInterval: NodeJS.Timeout | null = null;
   // Add a new timer for debouncing bot changes
@@ -82,7 +85,7 @@ export class CreateTournamentModal extends LitElement {
 
   render() {
     return html`
-      <o-modal title=${translateText("host_modal.title")}>
+      <o-modal title="Create Tournament">
         ${
           this.lobbyId
             ? html`<div class="lobby-id-box">
@@ -175,6 +178,260 @@ export class CreateTournamentModal extends LitElement {
             : html``
         }
         <div class="options-layout">
+          <!-- Instructions -->
+          ${
+            !this.lobbyId
+              ? html`
+                  <div class="options-section">
+                    <div
+                      style="
+                background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%);
+                border: 1px solid rgba(76, 175, 80, 0.3);
+                border-radius: 12px;
+                padding: 20px;
+                margin-bottom: 16px;
+              "
+                    >
+                      <div
+                        style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;"
+                      >
+                        <div
+                          style="color: #fff; font-size: 18px; font-weight: 600;"
+                        >
+                          Tournament Setup Guide
+                        </div>
+                      </div>
+                      <div
+                        style="color: #aaa; font-size: 14px; line-height: 1.8;"
+                      >
+                        <div style="margin-bottom: 8px;">
+                          <span style="color: #4caf50; font-weight: 600;"
+                            >1.</span
+                          >
+                          Set entry fee (locked on-chain via smart contract)
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                          <span style="color: #4caf50; font-weight: 600;"
+                            >2.</span
+                          >
+                          Configure game settings below (map, difficulty,
+                          options)
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                          <span style="color: #4caf50; font-weight: 600;"
+                            >3.</span
+                          >
+                          Create and wait for players to join
+                        </div>
+                        <div
+                          style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(76, 175, 80, 0.2);"
+                        >
+                          <strong style="color: #9ccc65;"
+                            >Public tournaments</strong
+                          >
+                          appear in the Browse Tournaments list for anyone to
+                          join
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `
+              : ""
+          }
+
+          <!-- Success Message -->
+          ${
+            this.creationSuccess
+              ? html`
+                  <div class="options-section">
+                    <div
+                      style="
+                background: linear-gradient(135deg, rgba(76, 175, 80, 0.2) 0%, rgba(76, 175, 80, 0.1) 100%);
+                border: 1px solid rgba(76, 175, 80, 0.5);
+                border-radius: 12px;
+                padding: 16px;
+                text-align: center;
+                margin-bottom: 16px;
+              "
+                    >
+                      <div
+                        style="color: #9ccc65; font-size: 18px; font-weight: 600; margin-bottom: 4px;"
+                      >
+                        Tournament Created Successfully!
+                      </div>
+                      <div style="color: #aaa; font-size: 14px;">
+                        ${this.lobbyVisibility === "public"
+                          ? "Your tournament is now live in Browse Tournaments"
+                          : "Share the lobby ID with players to join"}
+                      </div>
+                    </div>
+                  </div>
+                `
+              : ""
+          }
+
+          <!-- Tournament (On-Chain) Settings -->
+          <div class="options-section">
+            <div class="option-title">Tournament Entry Fee</div>
+            <div class="option-cards" style="flex-direction: column; align-items: center; gap: 16px;">
+              <!-- Entry Fee Input -->
+              <div class="option-card" style="width:100%; max-width:480px; padding:20px;">
+                <div style="text-align:center; margin-bottom:16px;">
+                  <div style="display:flex; gap:12px; align-items:center; justify-content:center; width:100%; margin-bottom:8px;">
+                    <input
+                      id="bet-amount"
+                      type="text"
+                      inputmode="decimal"
+                      autocomplete="off"
+                      placeholder="0.001"
+                      .value=${this.betAmount}
+                      ?disabled=${!!this.lobbyId}
+                      @input=${(e: Event) => {
+                        const v = (e.target as HTMLInputElement).value.trim();
+                        this.betAmount = v;
+                      }}
+                      style="
+                        width: 200px;
+                        padding: 12px 16px;
+                        background: rgba(255,255,255,0.08);
+                        border: 1px solid rgba(255,255,255,0.25);
+                        border-radius: 8px;
+                        color: #fff;
+                        font-size: 20px;
+                        font-weight: 600;
+                        outline: none;
+                        text-align: right;
+                      "
+                    />
+                    <span style="color:#fff; opacity:0.9; font-size:18px; font-weight:600;">ETH</span>
+                  </div>
+                  ${
+                    this.getUSDValue()
+                      ? html`
+                          <div style="color:#888; font-size:14px;">
+                            ≈ $${this.getUSDValue()} USD
+                          </div>
+                        `
+                      : ""
+                  }
+                </div>
+
+                <!-- Preset Buttons -->
+                ${
+                  !this.lobbyId
+                    ? html`
+                        <div
+                          style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;"
+                        >
+                          <button
+                            class="option-card"
+                            style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
+                            @click=${() => this.setPresetAmount(0.1)}
+                          >
+                            Test ($0.1)
+                          </button>
+                          <button
+                            class="option-card"
+                            style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
+                            @click=${() => this.setPresetAmount(5)}
+                          >
+                            Low ($5)
+                          </button>
+                          <button
+                            class="option-card"
+                            style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
+                            @click=${() => this.setPresetAmount(10)}
+                          >
+                            Medium ($10)
+                          </button>
+                          <button
+                            class="option-card"
+                            style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
+                            @click=${() => this.setPresetAmount(25)}
+                          >
+                            High ($25)
+                          </button>
+                        </div>
+                      `
+                    : ""
+                }
+              </div>
+
+              <!-- Visibility -->
+              <div class="option-card" style="width:100%; max-width:480px; padding:16px;">
+                <div class="option-card-title" style="width: 100%; text-align: center; margin-bottom: 12px;">
+                  Visibility
+                </div>
+                <div style="display: flex; gap: 16px; justify-content: center; width: 100%;">
+                  <label style="
+                    display:flex;
+                    align-items:center;
+                    gap:8px;
+                    cursor:pointer;
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    background: ${this.lobbyVisibility === "private" ? "rgba(255,255,255,0.1)" : "transparent"};
+                  ">
+                    <input
+                      type="radio"
+                      name="lobby-visibility"
+                      .checked=${this.lobbyVisibility === "private"}
+                      ?disabled=${!!this.lobbyId}
+                      @change=${() => {
+                        this.lobbyVisibility = "private";
+                      }}
+                    />
+                    Private
+                  </label>
+                  <label style="
+                    display:flex;
+                    align-items:center;
+                    gap:8px;
+                    cursor:pointer;
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    background: ${this.lobbyVisibility === "public" ? "rgba(76, 175, 80, 0.2)" : "transparent"};
+                  ">
+                    <input
+                      type="radio"
+                      name="lobby-visibility"
+                      .checked=${this.lobbyVisibility === "public"}
+                      ?disabled=${!!this.lobbyId}
+                      @change=${() => {
+                        this.lobbyVisibility = "public";
+                      }}
+                    />
+                    Public
+                  </label>
+                </div>
+              </div>
+
+              <!-- Create Button -->
+              ${
+                !this.lobbyId
+                  ? html`
+                      <div
+                        class="option-card"
+                        style="width:100%; max-width:480px; padding:16px; justify-content:center;"
+                      >
+                        <button
+                          class="start-game-button"
+                          style="width:100%; font-size:16px; padding:14px;"
+                          @click=${this.createTournament.bind(this)}
+                          ?disabled=${this.isCreating ||
+                          !this.isValidBetAmount()}
+                        >
+                          ${this.isCreating
+                            ? "Creating Tournament..."
+                            : "Create Tournament"}
+                        </button>
+                      </div>
+                    `
+                  : ""
+              }
+            </div>
+          </div>
+
           <!-- Map Selection -->
           <div class="options-section">
             <div class="option-title">${translateText("map.map")}</div>
@@ -433,72 +690,6 @@ export class CreateTournamentModal extends LitElement {
             </div>
           </div>
 
-          <!-- Tournament (On-Chain) Settings -->
-          <div class="options-section">
-            <div class="option-title">On-chain Tournament</div>
-            <div class="option-cards" style="flex-direction: column; align-items: center;">
-              <div class="option-card" style="width:100%; max-width:360px; padding:12px 16px;">
-                <div class="option-card-title" style="width:100%; text-align:center; color:#fff; font-weight:600; margin-bottom:8px;">
-                  Buy-in
-                </div>
-                <div style="display:flex; gap:8px; align-items:center; justify-content:center; width:100%;">
-                  <input
-                    id="bet-amount"
-                    type="text"
-                    inputmode="decimal"
-                    autocomplete="off"
-                    placeholder="0.01"
-                    .value=${this.betAmount}
-                    @input=${(e: Event) => {
-                      const v = (e.target as HTMLInputElement).value.trim();
-                      this.betAmount = v;
-                    }}
-                    style="
-                      width: 220px;
-                      padding: 10px 12px;
-                      background: rgba(255,255,255,0.08);
-                      border: 1px solid rgba(255,255,255,0.25);
-                      border-radius: 8px;
-                      color: #fff;
-                      font-size: 16px;
-                      outline: none;
-                      text-align: right;
-                    "
-                  />
-                  <span style="color:#fff; opacity:0.9; font-size:14px; font-weight:600;">ETH</span>
-                </div>
-              </div>
-              <div class="option-card" style="width:100%; max-width:360px; padding:12px 16px;">
-                <div class="option-card-title" style="width: 100%; text-align: center;">Visibility</div>
-                <div style="display: flex; gap: 12px; justify-content: center; width: 100%;">
-                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                    <input type="radio" name="lobby-visibility" .checked=${this.lobbyVisibility === "private"}
-                      @change=${() => {
-                        this.lobbyVisibility = "private";
-                      }} />
-                    Private
-                  </label>
-                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                    <input type="radio" name="lobby-visibility" .checked=${this.lobbyVisibility === "public"}
-                      @change=${() => {
-                        this.lobbyVisibility = "public";
-                      }} />
-                    Public
-                  </label>
-                </div>
-              </div>
-              <div class="option-card" style="width:100%; max-width:360px; padding:12px 16px; justify-content:center;">
-                <button
-                  class="start-game-button"
-                  @click=${this.createTournament.bind(this)}
-                  ?disabled=${this.lobbyId !== "" || !this.isValidBetAmount()}
-                >
-                  Create Tournament
-                </button>
-              </div>
-            </div>
-          </div>
-
         <!-- Lobby Selection -->
         <div class="options-section">
           <div class="option-title">
@@ -562,8 +753,50 @@ export class CreateTournamentModal extends LitElement {
       "settings.lobbyIdVisibility",
       true,
     );
+    this.isCreating = false;
+    this.creationSuccess = false;
+    this.fetchETHPrice();
     this.modalEl?.open();
     // Start polling only after lobby is created
+  }
+
+  private async fetchETHPrice() {
+    try {
+      // Use CoinGecko free API to get ETH price
+      const response = await fetch(
+        "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
+      );
+      const data = await response.json();
+      this.ethPriceUSD = data.ethereum?.usd ?? null;
+      console.log("ETH Price:", this.ethPriceUSD);
+    } catch (error) {
+      console.error("Failed to fetch ETH price:", error);
+      this.ethPriceUSD = null;
+    }
+  }
+
+  private getUSDValue(): string {
+    if (!this.ethPriceUSD || !this.betAmount) return "";
+    const eth = parseFloat(this.betAmount);
+    if (isNaN(eth)) return "";
+    const usd = eth * this.ethPriceUSD;
+    return usd.toFixed(2);
+  }
+
+  private setPresetAmount(usdTarget: number) {
+    if (!this.ethPriceUSD) {
+      // Fallback if price not loaded
+      const fallbacks: Record<number, string> = {
+        0.1: "0.00003",
+        5: "0.002",
+        10: "0.004",
+        25: "0.01",
+      };
+      this.betAmount = fallbacks[usdTarget] ?? "0.001";
+    } else {
+      const eth = usdTarget / this.ethPriceUSD;
+      this.betAmount = eth.toFixed(6);
+    }
   }
 
   public close() {
@@ -906,10 +1139,15 @@ export class CreateTournamentModal extends LitElement {
 
   private async createTournament(): Promise<void> {
     try {
+      this.isCreating = true;
+      this.creationSuccess = false;
       await this.createOnchainAndServerLobby();
+      this.creationSuccess = true;
     } catch (e: any) {
       console.error("Failed to create tournament:", e);
       alert(e?.message ?? "Failed to create tournament");
+    } finally {
+      this.isCreating = false;
     }
   }
 }

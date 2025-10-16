@@ -692,39 +692,66 @@ export async function getAllPublicLobbies(): Promise<string[]> {
 }
 
 /**
- * Get detailed information for multiple public lobbies
+ * Get detailed information for multiple public lobbies using multicall
  */
 export async function getPublicLobbyDetails(
   lobbyIds: string[],
 ): Promise<PublicLobbyInfo[]> {
-  const lobbyDetails: PublicLobbyInfo[] = [];
-
-  for (const lobbyId of lobbyIds) {
-    try {
-      const lobbyInfo = await getLobbyInfo(lobbyId);
-
-      if (lobbyInfo && lobbyInfo.exists) {
-        const publicLobbyInfo: PublicLobbyInfo = {
-          lobbyId,
-          host: lobbyInfo.host,
-          betAmount: lobbyInfo.betAmount,
-          participants: lobbyInfo.participants,
-          status: lobbyInfo.status,
-          winner: lobbyInfo.winner,
-          totalPrize: lobbyInfo.totalPrize,
-          participantCount: lobbyInfo.participants.length,
-          formattedBetAmount: formatEther(lobbyInfo.betAmount),
-        };
-
-        lobbyDetails.push(publicLobbyInfo);
-      }
-    } catch (error) {
-      console.error(`Error getting details for lobby ${lobbyId}:`, error);
-      // Continue with other lobbies even if one fails
-    }
+  if (lobbyIds.length === 0) {
+    return [];
   }
 
-  return lobbyDetails;
+  try {
+    // Prepare multicall contracts array
+    const contracts = lobbyIds.map((lobbyId) => ({
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "getLobby",
+      args: [stringToBytes32(lobbyId)],
+    }));
+
+    // Execute multicall - fetch all lobby data in a single RPC call
+    const results = await publicClient.multicall({
+      contracts: contracts as any[],
+      allowFailure: true,
+    });
+
+    // Process results
+    const lobbyDetails: PublicLobbyInfo[] = [];
+
+    results.forEach((result, index) => {
+      const lobbyId = lobbyIds[index];
+
+      if (result.status === "success" && result.result) {
+        const [host, betAmount, participants, status, winner, totalPrize] =
+          result.result as [string, bigint, string[], number, string, bigint];
+
+        // Check if lobby exists (host is not zero address)
+        if (host !== ZERO_ADDRESS) {
+          const publicLobbyInfo: PublicLobbyInfo = {
+            lobbyId,
+            host,
+            betAmount,
+            participants,
+            status: status as GameStatus,
+            winner,
+            totalPrize,
+            participantCount: participants.length,
+            formattedBetAmount: formatEther(betAmount),
+          };
+
+          lobbyDetails.push(publicLobbyInfo);
+        }
+      } else {
+        console.warn(`Failed to fetch lobby ${lobbyId}:`, result.error);
+      }
+    });
+
+    return lobbyDetails;
+  } catch (error) {
+    console.error("Error in multicall for lobby details:", error);
+    return [];
+  }
 }
 
 /**

@@ -130,7 +130,7 @@
   </head>
 
   <body
-    class="h-full select-none font-sans min-h-screen bg-opacity-0 bg-cover bg-center bg-fixed transition-opacity duration-300 ease-in-out flex flex-col"
+    class="h-full font-sans min-h-screen bg-opacity-0 bg-cover bg-center bg-fixed transition-opacity duration-300 ease-in-out flex flex-col"
   >
     <header class="l-header">
       <div class="l-header__content">
@@ -224,17 +224,7 @@
           ></news-button>
         </div>
         <div></div>
-        <div>
-          <public-lobby class="block"></public-lobby>
-        </div>
         <div class="container__row container__row--equal">
-          <o-button
-            id="host-lobby-button"
-            title="Create Lobby (Free)"
-            translationKey="main.create_lobby"
-            block
-            secondary
-          ></o-button>
           <o-button
             id="create-tournament-button"
             title="Create Tournament"
@@ -248,9 +238,8 @@
             secondary
           ></o-button>
           <o-button
-            id="join-private-lobby-button"
-            title="Join Lobby"
-            translationKey="main.join_lobby"
+            id="join-private-tournament-button"
+            title="Join Private Tournament"
             block
             secondary
           ></o-button>
@@ -262,12 +251,6 @@
           ></o-button> -->
         </div>
         <open-games-modal></open-games-modal>
-        <o-button
-          id="single-player"
-          title="Single Player"
-          translationKey="main.single_player"
-          block
-        ></o-button>
 
         <o-button
           id="help-button"
@@ -402,10 +385,8 @@
     </footer>
     <account-button></account-button>
     <!-- Game modals and overlays -->
-    <single-player-modal></single-player-modal>
-    <host-lobby-modal></host-lobby-modal>
     <create-tournament-modal></create-tournament-modal>
-    <join-private-lobby-modal></join-private-lobby-modal>
+    <join-private-tournament-modal></join-private-tournament-modal>
     <emoji-table></emoji-table>
     <build-menu></build-menu>
     <win-modal></win-modal>

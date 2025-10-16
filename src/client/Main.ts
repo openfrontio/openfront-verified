@@ -1,7 +1,7 @@
 import version from "../../resources/version.txt";
 import { UserMeResponse } from "../core/ApiSchemas";
 import { EventBus } from "../core/EventBus";
-import { GameRecord, GameStartInfo, ID } from "../core/Schemas";
+import { GameRecord, GameStartInfo } from "../core/Schemas";
 import { ServerConfig } from "../core/configuration/Config";
 import { getServerConfigFromClient } from "../core/configuration/ConfigLoader";
 import { UserSettings } from "../core/game/UserSettings";
@@ -18,17 +18,13 @@ import { FlagInputModal } from "./FlagInputModal";
 import { GameStartingModal } from "./GameStartingModal";
 import "./GoogleAdElement";
 import { HelpModal } from "./HelpModal";
-import { HostLobbyModal as HostPrivateLobbyModal } from "./HostLobbyModal";
 import { initializePrivy } from "./InitPrivy";
-import { JoinPrivateLobbyModal } from "./JoinPrivateLobbyModal";
+import { JoinPrivateTournamentModal } from "./JoinPrivateTournamentModal";
 import "./LangSelector";
 import { LangSelector } from "./LangSelector";
 import { LanguageModal } from "./LanguageModal";
 import { NewsModal } from "./NewsModal";
 import "./OpenGamesModal";
-import "./PublicLobby";
-import { PublicLobby } from "./PublicLobby";
-import { SinglePlayerModal } from "./SinglePlayerModal";
 import { TerritoryPatternsModal } from "./TerritoryPatternsModal";
 import { TokenLoginModal } from "./TokenLoginModal";
 import { SendKickPlayerIntentEvent } from "./Transport";
@@ -92,10 +88,9 @@ class Client {
   private flagInput: FlagInput | null = null;
   private darkModeButton: DarkModeButton | null = null;
 
-  private joinModal: JoinPrivateLobbyModal;
-  private publicLobby: PublicLobby;
   private userSettings: UserSettings = new UserSettings();
   private patternsModal: TerritoryPatternsModal;
+  private privateTournamentModal: JoinPrivateTournamentModal | null = null;
   private tokenLoginModal: TokenLoginModal;
 
   constructor() {}
@@ -156,8 +151,6 @@ class Client {
       console.warn("Username input element not found");
     }
 
-    this.publicLobby = document.querySelector("public-lobby") as PublicLobby;
-
     window.addEventListener("beforeunload", () => {
       console.log("Browser is closing");
       if (this.gameStop !== null) {
@@ -168,19 +161,6 @@ class Client {
     document.addEventListener("join-lobby", this.handleJoinLobby.bind(this));
     document.addEventListener("leave-lobby", this.handleLeaveLobby.bind(this));
     document.addEventListener("kick-player", this.handleKickPlayer.bind(this));
-
-    const spModal = document.querySelector(
-      "single-player-modal",
-    ) as SinglePlayerModal;
-    spModal instanceof SinglePlayerModal;
-
-    const singlePlayer = document.getElementById("single-player");
-    if (singlePlayer === null) throw new Error("Missing single-player");
-    singlePlayer.addEventListener("click", () => {
-      if (this.usernameInput?.isValid()) {
-        spModal.open();
-      }
-    });
 
     // const ctModal = document.querySelector("chat-modal") as ChatModal;
     // ctModal instanceof ChatModal;
@@ -225,6 +205,10 @@ class Client {
       "token-login",
     ) as TokenLoginModal;
     this.tokenLoginModal instanceof TokenLoginModal;
+    this.privateTournamentModal = document.querySelector(
+      "join-private-tournament-modal",
+    ) as JoinPrivateTournamentModal;
+    this.privateTournamentModal instanceof JoinPrivateTournamentModal;
 
     const onUserMe = async (userMeResponse: UserMeResponse | false) => {
       document.dispatchEvent(
@@ -342,19 +326,6 @@ class Client {
         settingsModal.open();
       });
 
-    const hostModal = document.querySelector(
-      "host-lobby-modal",
-    ) as HostPrivateLobbyModal;
-    hostModal instanceof HostPrivateLobbyModal;
-    const hostLobbyButton = document.getElementById("host-lobby-button");
-    if (hostLobbyButton === null) throw new Error("Missing host-lobby-button");
-    hostLobbyButton.addEventListener("click", () => {
-      if (this.usernameInput?.isValid()) {
-        hostModal.open();
-        this.publicLobby.leaveLobby();
-      }
-    });
-
     const createTournamentButton = document.getElementById(
       "create-tournament-button",
     );
@@ -365,7 +336,6 @@ class Client {
             "create-tournament-modal",
           ) as CreateTournamentModal;
           ct?.open();
-          this.publicLobby.leaveLobby();
         }
       });
     }
@@ -376,23 +346,18 @@ class Client {
         if (this.usernameInput?.isValid()) {
           const modal = document.querySelector("open-games-modal") as any;
           modal?.open();
-          this.publicLobby?.leaveLobby();
         }
       });
     }
 
-    this.joinModal = document.querySelector(
-      "join-private-lobby-modal",
-    ) as JoinPrivateLobbyModal;
-    this.joinModal instanceof JoinPrivateLobbyModal;
-    const joinPrivateLobbyButton = document.getElementById(
-      "join-private-lobby-button",
+    const joinPrivateTournamentButton = document.getElementById(
+      "join-private-tournament-button",
     );
-    if (joinPrivateLobbyButton === null)
-      throw new Error("Missing join-private-lobby-button");
-    joinPrivateLobbyButton.addEventListener("click", () => {
+    if (joinPrivateTournamentButton === null)
+      throw new Error("Missing join-private-tournament-button");
+    joinPrivateTournamentButton.addEventListener("click", () => {
       if (this.usernameInput?.isValid()) {
-        this.joinModal.open();
+        this.privateTournamentModal?.open();
       }
     });
 
@@ -407,7 +372,6 @@ class Client {
 
     const onHashUpdate = () => {
       // Reset the UI to its initial state
-      this.joinModal.close();
       if (this.gameStop !== null) {
         this.handleLeaveLobby();
       }
@@ -429,9 +393,7 @@ class Client {
     }
 
     document
-      .querySelectorAll<HTMLInputElement>(
-        "#bots-count, #private-lobby-bots-count, #tournament-bots-count",
-      )
+      .querySelectorAll<HTMLInputElement>("#bots-count, #tournament-bots-count")
       .forEach((slider) => {
         updateSliderProgress(slider);
         slider.addEventListener("input", () => updateSliderProgress(slider));
@@ -507,13 +469,6 @@ class Client {
       return;
     }
 
-    if (decodedHash.startsWith("#join=")) {
-      const lobbyId = decodedHash.substring(6); // Remove "#join="
-      if (lobbyId && ID.safeParse(lobbyId).success) {
-        this.joinModal.open(lobbyId);
-        console.log(`joining lobby ${lobbyId}`);
-      }
-    }
     if (decodedHash.startsWith("#affiliate=")) {
       const affiliateCode = decodedHash.replace("#affiliate=", "");
       strip();
@@ -565,10 +520,9 @@ class Client {
         );
         if (walletContainer) walletContainer.style.display = "none";
         [
-          "single-player-modal",
-          "host-lobby-modal",
-          "join-private-lobby-modal",
           "game-starting-modal",
+          "join-private-tournament-modal",
+          "open-games-modal",
           "game-top-bar",
           "help-modal",
           "user-setting",
@@ -589,7 +543,6 @@ class Client {
             modal.isModalOpen = false;
           }
         });
-        this.publicLobby.stop();
         document.querySelectorAll(".ad").forEach((ad) => {
           (ad as HTMLElement).style.display = "none";
         });
@@ -602,8 +555,6 @@ class Client {
         startingModal.show();
       },
       () => {
-        this.joinModal.close();
-        this.publicLobby.stop();
         incrementGamesPlayed();
 
         try {
@@ -615,12 +566,6 @@ class Client {
         document.querySelectorAll(".ad").forEach((ad) => {
           (ad as HTMLElement).style.display = "none";
         });
-
-        // Ensure there's a homepage entry in history before adding the lobby entry
-        if (window.location.hash === "" || window.location.hash === "#") {
-          history.pushState(null, "", window.location.origin + "#refresh");
-        }
-        history.pushState(null, "", `#join=${lobby.gameID}`);
       },
     );
   }
@@ -632,7 +577,6 @@ class Client {
     console.log("leaving lobby, cancelling game");
     this.gameStop();
     this.gameStop = null;
-    this.publicLobby.leaveLobby();
     // Show the wallet button again after exiting game
     const walletContainer = document.getElementById("wallet-button-container");
     if (walletContainer) walletContainer.style.display = "";

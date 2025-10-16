@@ -567,6 +567,11 @@ label.option-card:hover {
   color: #2e7d32;
 }
 
+.message-area.info {
+  background-color: #e3f2fd;
+  color: #1565c0;
+}
+
 .lobby-id-box {
   display: flex;
   align-items: center;
