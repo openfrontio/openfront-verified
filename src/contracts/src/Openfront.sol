@@ -11,15 +11,6 @@ import {IOpenfront} from "./interfaces/IOpenfront.sol";
  * @dev Implements IOpenfront; function-level docs use `@inheritdoc` to stay in sync.
  */
 contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
-    // Additional custom errors for clearer failure reasons
-    error LobbyAlreadyExists();
-    error AlreadyParticipant();
-    error InvalidStatus();
-    error TooFewPlayers();
-    error ZeroAddress();
-    error TransferFailed();
-    error RefundFailed();
-
     struct Lobby {
         address host;               // Address that created and owns the lobby
         uint256 betAmount;          // The ETH amount each player must pay/bet to join
@@ -43,6 +34,8 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
     mapping(bytes32 => bool) public isPublicLobby; // Visibility of each lobby
     mapping(bytes32 => mapping(address => bool)) private hasJoined; // O(1) membership checks
     mapping(bytes32 => uint256) private lobbyMaxPlayers; // 0 = unlimited
+    mapping(bytes32 => bool) private allowlistEnabled;    // If true, only allowlisted can join
+    mapping(bytes32 => mapping(address => bool)) private lobbyAllowlist; // allowlist per lobby
     address public gameServer;          // Authorized address to declare winners
     
     modifier onlyHost(bytes32 lobbyId) {
@@ -100,6 +93,9 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
         require(msg.value == lobby.betAmount, InsufficientFunds());
         uint256 maxP = lobbyMaxPlayers[lobbyId];
         require(maxP == 0 || lobby.participants.length < maxP, LobbyFull());
+        if (allowlistEnabled[lobbyId]) {
+            require(lobbyAllowlist[lobbyId][msg.sender], NotAllowlisted());
+        }
 
         // Check if already a participant
         require(!hasJoined[lobbyId][msg.sender], AlreadyParticipant());
@@ -221,6 +217,50 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
     /// @inheritdoc IOpenfront
     function getMaxPlayers(bytes32 lobbyId) external view override returns (uint256 maxPlayers) {
         return lobbyMaxPlayers[lobbyId];
+    }
+
+    /// @inheritdoc IOpenfront
+    function setAllowlistEnabled(bytes32 lobbyId, bool enabled) external override lobbyExists(lobbyId) onlyHost(lobbyId) {
+        Lobby storage lobby = lobbies[lobbyId];
+        require(lobby.status == GameStatus.Created, InvalidStatus());
+        allowlistEnabled[lobbyId] = enabled;
+        emit AllowlistEnabled(lobbyId, enabled);
+    }
+
+    /// @inheritdoc IOpenfront
+    function addToAllowlist(bytes32 lobbyId, address[] calldata accounts) external override lobbyExists(lobbyId) onlyHost(lobbyId) {
+        Lobby storage lobby = lobbies[lobbyId];
+        require(lobby.status == GameStatus.Created, InvalidStatus());
+        uint256 len = accounts.length;
+        for (uint256 i = 0; i < len; i++) {
+            address account = accounts[i];
+            require(account != address(0), ZeroAddress());
+            lobbyAllowlist[lobbyId][account] = true;
+            emit AllowlistUpdated(lobbyId, account, true);
+        }
+    }
+
+    /// @inheritdoc IOpenfront
+    function removeFromAllowlist(bytes32 lobbyId, address[] calldata accounts) external override lobbyExists(lobbyId) onlyHost(lobbyId) {
+        Lobby storage lobby = lobbies[lobbyId];
+        require(lobby.status == GameStatus.Created, InvalidStatus());
+        uint256 len = accounts.length;
+        for (uint256 i = 0; i < len; i++) {
+            address account = accounts[i];
+            require(account != address(0), ZeroAddress());
+            lobbyAllowlist[lobbyId][account] = false;
+            emit AllowlistUpdated(lobbyId, account, false);
+        }
+    }
+
+    /// @inheritdoc IOpenfront
+    function isAllowlistEnabled(bytes32 lobbyId) external view override returns (bool enabled) {
+        return allowlistEnabled[lobbyId];
+    }
+
+    /// @inheritdoc IOpenfront
+    function isAllowlisted(bytes32 lobbyId, address account) external view override returns (bool allowed) {
+        return lobbyAllowlist[lobbyId][account];
     }
 
     /// @inheritdoc IOpenfront

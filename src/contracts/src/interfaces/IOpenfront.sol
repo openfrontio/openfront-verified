@@ -12,6 +12,8 @@ interface IOpenfront {
     // ============ Errors ============
     /// @notice Thrown when a referenced lobby does not exist
     error LobbyNotFound();
+    /// @notice Thrown when trying to create a lobby that already exists
+    error LobbyAlreadyExists();
     /// @notice Thrown when the caller is not the lobby host
     error NotHost();
     /// @notice Thrown when the caller is not the recorded winner
@@ -32,6 +34,20 @@ interface IOpenfront {
     error NotParticipant();
     /// @notice Thrown when ETH sent with tx does not match required amount
     error InsufficientFunds();
+    /// @notice Thrown when allowlist is enabled and caller is not allowlisted
+    error NotAllowlisted();
+    /// @notice Thrown when an address has already joined the lobby
+    error AlreadyParticipant();
+    /// @notice Thrown when an operation is invalid for the current status
+    error InvalidStatus();
+    /// @notice Thrown when not enough players are present to start the game
+    error TooFewPlayers();
+    /// @notice Thrown when a zero address is provided where not allowed
+    error ZeroAddress();
+    /// @notice Thrown when ETH transfer to winner fails
+    error TransferFailed();
+    /// @notice Thrown when refund to a participant fails
+    error RefundFailed();
 
     // ============ Events ============
     /**
@@ -82,6 +98,21 @@ interface IOpenfront {
      * @param lobbyId Unique lobby identifier.
      */
     event LobbyCanceled(bytes32 indexed lobbyId);
+
+    /**
+     * @notice Emitted when the host toggles allowlist mode for a lobby.
+     * @param lobbyId Unique lobby identifier.
+     * @param enabled Whether allowlist enforcement is enabled.
+     */
+    event AllowlistEnabled(bytes32 indexed lobbyId, bool enabled);
+
+    /**
+     * @notice Emitted when an address\'s allowlist status changes for a lobby.
+     * @param lobbyId Unique lobby identifier.
+     * @param account Address whose allowlist status changed.
+     * @param allowed Whether the address is now allowed.
+     */
+    event AllowlistUpdated(bytes32 indexed lobbyId, address indexed account, bool allowed);
 
     // ============ External Functions ============
     /**
@@ -230,4 +261,34 @@ interface IOpenfront {
      * @return maxPlayers Maximum allowed participants (0 = unlimited).
      */
     function getMaxPlayers(bytes32 lobbyId) external view returns (uint256 maxPlayers);
+
+    // ========= Allowlist Controls =========
+
+    /**
+     * @notice Enable or disable allowlist enforcement for a lobby.
+     * @dev Only the host, only while in Created status.
+     */
+    function setAllowlistEnabled(bytes32 lobbyId, bool enabled) external;
+
+    /**
+     * @notice Add multiple addresses to the lobby\'s allowlist.
+     * @dev Only the host, only while in Created status.
+     */
+    function addToAllowlist(bytes32 lobbyId, address[] calldata accounts) external;
+
+    /**
+     * @notice Remove multiple addresses from the lobby\'s allowlist.
+     * @dev Only the host, only while in Created status.
+     */
+    function removeFromAllowlist(bytes32 lobbyId, address[] calldata accounts) external;
+
+    /**
+     * @notice Check whether allowlist enforcement is enabled for a lobby.
+     */
+    function isAllowlistEnabled(bytes32 lobbyId) external view returns (bool enabled);
+
+    /**
+     * @notice Check whether an address is allowlisted for a lobby.
+     */
+    function isAllowlisted(bytes32 lobbyId, address account) external view returns (bool allowed);
 }

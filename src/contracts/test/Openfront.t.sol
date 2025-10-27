@@ -129,7 +129,7 @@ contract OpenfrontTest is Test {
         assertEq(openfront.getParticipantCount(id), 2);
 
         vm.prank(player1);
-        vm.expectRevert(Openfront.AlreadyParticipant.selector);
+        vm.expectRevert(IOpenfront.AlreadyParticipant.selector);
         openfront.joinLobby{value: bet}(id);
     }
 
@@ -140,7 +140,7 @@ contract OpenfrontTest is Test {
 
         // Not enough players
         vm.prank(host);
-        vm.expectRevert(Openfront.TooFewPlayers.selector);
+        vm.expectRevert(IOpenfront.TooFewPlayers.selector);
         openfront.startGame(id);
 
         // Add second player
@@ -200,5 +200,147 @@ contract OpenfrontTest is Test {
         vm.prank(player1);
         vm.expectRevert(IOpenfront.GameNotFinished.selector);
         openfront.claimPrize(id);
+    }
+
+    // ================= Allowlist Tests =================
+
+    function testAllowlist_DefaultDisabled_AllCanJoin() public {
+        bytes32 id = keccak256("lobby-allow-0");
+        vm.prank(host);
+        openfront.createLobby{value: bet}(id, bet, true);
+
+        // Allowlist disabled by default
+        assertEq(openfront.isAllowlistEnabled(id), false);
+
+        // Any player can join if pays bet
+        vm.prank(player1);
+        openfront.joinLobby{value: bet}(id);
+
+        vm.prank(player2);
+        openfront.joinLobby{value: bet}(id);
+    }
+
+    function testAllowlist_EnableBlocksNonAllowlisted() public {
+        bytes32 id = keccak256("lobby-allow-1");
+        vm.prank(host);
+        openfront.createLobby{value: bet}(id, bet, false);
+
+        // Enable allowlist
+        vm.prank(host);
+        openfront.setAllowlistEnabled(id, true);
+        assertEq(openfront.isAllowlistEnabled(id), true);
+
+        // Non-allowlisted cannot join
+        vm.prank(player1);
+        vm.expectRevert(IOpenfront.NotAllowlisted.selector);
+        openfront.joinLobby{value: bet}(id);
+
+        // Add player1 and join ok
+        address[] memory addrs = new address[](1);
+        addrs[0] = player1;
+        vm.prank(host);
+        openfront.addToAllowlist(id, addrs);
+        assertTrue(openfront.isAllowlisted(id, player1));
+
+        vm.prank(player1);
+        openfront.joinLobby{value: bet}(id);
+    }
+
+    function testAllowlist_AddRemove() public {
+        bytes32 id = keccak256("lobby-allow-2");
+        vm.prank(host);
+        openfront.createLobby{value: bet}(id, bet, true);
+
+        vm.prank(host);
+        openfront.setAllowlistEnabled(id, true);
+
+        address[] memory addrs = new address[](2);
+        addrs[0] = player1;
+        addrs[1] = player2;
+        vm.prank(host);
+        openfront.addToAllowlist(id, addrs);
+        assertTrue(openfront.isAllowlisted(id, player1));
+        assertTrue(openfront.isAllowlisted(id, player2));
+
+        // Remove player2
+        address[] memory rem = new address[](1);
+        rem[0] = player2;
+        vm.prank(host);
+        openfront.removeFromAllowlist(id, rem);
+        assertTrue(openfront.isAllowlisted(id, player1));
+        assertFalse(openfront.isAllowlisted(id, player2));
+
+        // player2 blocked
+        vm.prank(player2);
+        vm.expectRevert(IOpenfront.NotAllowlisted.selector);
+        openfront.joinLobby{value: bet}(id);
+
+        // player1 ok
+        vm.prank(player1);
+        openfront.joinLobby{value: bet}(id);
+    }
+
+    function testAllowlist_DisableAfterEnable_AllCanJoin() public {
+        bytes32 id = keccak256("lobby-allow-3");
+        vm.prank(host);
+        openfront.createLobby{value: bet}(id, bet, false);
+
+        vm.prank(host);
+        openfront.setAllowlistEnabled(id, true);
+
+        // Not allowlisted yet -> blocked
+        vm.prank(player1);
+        vm.expectRevert(IOpenfront.NotAllowlisted.selector);
+        openfront.joinLobby{value: bet}(id);
+
+        // Disable allowlist -> join ok
+        vm.prank(host);
+        openfront.setAllowlistEnabled(id, false);
+        assertEq(openfront.isAllowlistEnabled(id), false);
+
+        vm.prank(player1);
+        openfront.joinLobby{value: bet}(id);
+    }
+
+    function testAllowlist_PermissionsAndStatusChecks() public {
+        bytes32 id = keccak256("lobby-allow-4");
+        vm.prank(host);
+        openfront.createLobby{value: bet}(id, bet, true);
+
+        // Only host can toggle enable
+        vm.prank(attacker);
+        vm.expectRevert(IOpenfront.NotHost.selector);
+        openfront.setAllowlistEnabled(id, true);
+
+        vm.prank(host);
+        openfront.setAllowlistEnabled(id, true);
+
+        // Only host can modify list
+        address[] memory addrs = new address[](1);
+        addrs[0] = player1;
+        vm.prank(attacker);
+        vm.expectRevert(IOpenfront.NotHost.selector);
+        openfront.addToAllowlist(id, addrs);
+
+        vm.prank(host);
+        openfront.addToAllowlist(id, addrs);
+
+        // After game starts, modifications should revert
+        vm.prank(player1);
+        openfront.joinLobby{value: bet}(id);
+        vm.prank(host);
+        openfront.startGame(id);
+
+        vm.prank(host);
+        vm.expectRevert(IOpenfront.InvalidStatus.selector);
+        openfront.setAllowlistEnabled(id, false);
+
+        vm.prank(host);
+        vm.expectRevert(IOpenfront.InvalidStatus.selector);
+        openfront.addToAllowlist(id, addrs);
+
+        vm.prank(host);
+        vm.expectRevert(IOpenfront.InvalidStatus.selector);
+        openfront.removeFromAllowlist(id, addrs);
     }
 }

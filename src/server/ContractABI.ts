@@ -12,6 +12,24 @@ export const ContractABI = [
   },
   {
     type: "function",
+    name: "addToAllowlist",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+      {
+        name: "accounts",
+        type: "address[]",
+        internalType: "address[]",
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "cancelLobby",
     inputs: [
       {
@@ -274,6 +292,49 @@ export const ContractABI = [
   },
   {
     type: "function",
+    name: "isAllowlistEnabled",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+    ],
+    outputs: [
+      {
+        name: "enabled",
+        type: "bool",
+        internalType: "bool",
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "isAllowlisted",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+      {
+        name: "account",
+        type: "address",
+        internalType: "address",
+      },
+    ],
+    outputs: [
+      {
+        name: "allowed",
+        type: "bool",
+        internalType: "bool",
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "isParticipant",
     inputs: [
       {
@@ -420,8 +481,44 @@ export const ContractABI = [
   },
   {
     type: "function",
+    name: "removeFromAllowlist",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+      {
+        name: "accounts",
+        type: "address[]",
+        internalType: "address[]",
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "renounceOwnership",
     inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "setAllowlistEnabled",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+      {
+        name: "enabled",
+        type: "bool",
+        internalType: "bool",
+      },
+    ],
     outputs: [],
     stateMutability: "nonpayable",
   },
@@ -481,6 +578,50 @@ export const ContractABI = [
     ],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+  {
+    type: "event",
+    name: "AllowlistEnabled",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        indexed: true,
+        internalType: "bytes32",
+      },
+      {
+        name: "enabled",
+        type: "bool",
+        indexed: false,
+        internalType: "bool",
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "AllowlistUpdated",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        indexed: true,
+        internalType: "bytes32",
+      },
+      {
+        name: "account",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+      {
+        name: "allowed",
+        type: "bool",
+        indexed: false,
+        internalType: "bool",
+      },
+    ],
+    anonymous: false,
   },
   {
     type: "event",
@@ -681,6 +822,11 @@ export const ContractABI = [
   },
   {
     type: "error",
+    name: "NotAllowlisted",
+    inputs: [],
+  },
+  {
+    type: "error",
     name: "NotGameServer",
     inputs: [],
   },
@@ -701,7 +847,34 @@ export const ContractABI = [
   },
   {
     type: "error",
+    name: "OwnableInvalidOwner",
+    inputs: [
+      {
+        name: "owner",
+        type: "address",
+        internalType: "address",
+      },
+    ],
+  },
+  {
+    type: "error",
+    name: "OwnableUnauthorizedAccount",
+    inputs: [
+      {
+        name: "account",
+        type: "address",
+        internalType: "address",
+      },
+    ],
+  },
+  {
+    type: "error",
     name: "PrizeAlreadyClaimed",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "ReentrancyGuardReentrantCall",
     inputs: [],
   },
   {
@@ -724,4 +897,4 @@ export const ContractABI = [
     name: "ZeroAddress",
     inputs: [],
   },
-];
+] as const;
