@@ -761,106 +761,129 @@ export class CreateTournamentModal extends LitElement {
         </div>
 
         <div class="allowlist-section">
-          <div class="option-title" style="margin-top: 24px;">
-            Allowlist Controls
-          </div>
-
-          <div class="allowlist-toggle">
-            <label class="option-card" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px;">
+          <div class="option-title" style="margin-top: 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <span>Allowlist Controls</span>
+            <label
+              class="option-card"
+              style="display: flex; align-items: center; gap: 10px; padding: 6px 12px; margin: 0; font-size: 13px;"
+            >
               <input
                 type="checkbox"
                 .checked=${this.allowlistEnabled}
                 ?disabled=${!this.lobbyId || this.isUpdatingAllowlist}
                 @change=${this.handleAllowlistToggle}
               />
-              <span>Enable allowlist (only listed addresses can join)</span>
+              <span style="white-space: nowrap;">${
+                this.allowlistEnabled
+                  ? "Allowlist enabled"
+                  : "Allowlist disabled"
+              }</span>
             </label>
           </div>
 
-          <div class="allowlist-input" style="margin-top: 12px;">
-            <textarea
-              placeholder="Enter Ethereum addresses separated by commas or new lines"
-              .value=${this.allowlistInput}
-              ?disabled=${!this.lobbyId || !this.allowlistEnabled || this.isUpdatingAllowlist}
-              @input=${(event: Event) => {
-                this.allowlistInput = (
-                  event.target as HTMLTextAreaElement
-                ).value;
-              }}
-              style="width: 100%; min-height: 100px; background: rgba(255,255,255,0.05); color: #fff; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);"
-            ></textarea>
-          </div>
-
-          <div style="display: flex; gap: 12px; margin-top: 12px;">
-            <button
-              class="start-game-button"
-              style="flex: 1; background: rgba(76, 175, 80, 0.85);"
-              @click=${this.addAllowlistAddresses}
-              ?disabled=${!this.lobbyId || !this.allowlistEnabled || this.isUpdatingAllowlist}
-            >
-              Add to allowlist
-            </button>
-            <button
-              class="start-game-button"
-              style="flex: 1; background: rgba(255, 87, 34, 0.85);"
-              @click=${this.removeAllowlistAddresses}
-              ?disabled=${!this.lobbyId || !this.allowlistEnabled || this.isUpdatingAllowlist}
-            >
-              Remove from allowlist
-            </button>
-          </div>
-
           ${
-            this.allowlistStatusMessage
+            this.allowlistEnabled
               ? html`
                   <div
-                    style="margin-top: 8px; color: #ffcc80; font-size: 13px; text-align: center;"
+                    style="margin-top: 12px; background: rgba(255,255,255,0.04); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 12px;"
                   >
-                    ${this.allowlistStatusMessage}
-                  </div>
-                `
-              : html``
-          }
+                    <textarea
+                      placeholder="Enter Ethereum addresses separated by commas or new lines"
+                      .value=${this.allowlistInput}
+                      ?disabled=${!this.lobbyId || this.isUpdatingAllowlist}
+                      @input=${(event: Event) => {
+                        this.allowlistInput = (
+                          event.target as HTMLTextAreaElement
+                        ).value;
+                      }}
+                      style="width: 100%; min-height: 110px; background: rgba(0,0,0,0.35); color: #fff; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);"
+                    ></textarea>
 
-          ${
-            this.currentAllowlist.length
-              ? html`
-                  <div
-                    style="margin-top: 16px; background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; max-height: 160px; overflow-y: auto;"
-                  >
-                    <div
-                      style="font-weight: bold; margin-bottom: 8px; color: #9ccc65;"
-                    >
-                      Current Allowlisted Addresses
-                      (${this.currentAllowlist.length})
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                      <button
+                        class="start-game-button"
+                        style="flex: 1; min-width: 160px; background: rgba(76, 175, 80, 0.9);"
+                        @click=${this.addAllowlistAddresses}
+                        ?disabled=${!this.lobbyId || this.isUpdatingAllowlist}
+                      >
+                        Add to allowlist
+                      </button>
+                      <button
+                        class="start-game-button"
+                        style="flex: 1; min-width: 160px; background: rgba(255, 87, 34, 0.9);"
+                        @click=${this.removeAllowlistAddresses}
+                        ?disabled=${!this.lobbyId || this.isUpdatingAllowlist}
+                      >
+                        Remove from allowlist
+                      </button>
                     </div>
-                    <ul
-                      style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px;"
-                    >
-                      ${this.currentAllowlist.map(
-                        (address) => html`
-                          <li
-                            style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 8px 10px; border-radius: 6px;"
+
+                    ${this.allowlistStatusMessage
+                      ? html`
+                          <div
+                            style="margin-top: 4px; color: #ffcc80; font-size: 13px; text-align: center;"
                           >
-                            <span
-                              style="font-family: monospace; font-size: 13px;"
-                              >${address}</span
+                            ${this.allowlistStatusMessage}
+                          </div>
+                        `
+                      : html``}
+                    ${this.currentAllowlist.length
+                      ? html`
+                          <div
+                            style="background: rgba(0,0,0,0.25); padding: 12px; border-radius: 8px; max-height: 180px; overflow-y: auto;"
+                          >
+                            <div
+                              style="font-weight: 600; margin-bottom: 8px; color: #9ccc65; display: flex; justify-content: space-between; align-items: center;"
                             >
-                            <button
-                              class="remove-player-btn"
-                              style="font-size: 14px; padding: 4px 8px;"
-                              @click=${() =>
-                                this.removeAllowlistAddresses([address])}
+                              <span>Current Allowlisted Addresses</span>
+                              <span style="font-size: 12px; opacity: 0.8;"
+                                >${this.currentAllowlist.length}</span
+                              >
+                            </div>
+                            <ul
+                              style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px;"
                             >
-                              Remove
-                            </button>
-                          </li>
-                        `,
-                      )}
-                    </ul>
+                              ${this.currentAllowlist.map(
+                                (address) => html`
+                                  <li
+                                    style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.4); padding: 8px 10px; border-radius: 6px; gap: 8px;"
+                                  >
+                                    <span
+                                      style="font-family: monospace; font-size: 13px; overflow-wrap: anywhere;"
+                                      >${address}</span
+                                    >
+                                    <button
+                                      class="remove-player-btn"
+                                      style="font-size: 13px; padding: 4px 8px;"
+                                      @click=${() =>
+                                        this.removeAllowlistAddresses([
+                                          address,
+                                        ])}
+                                    >
+                                      Remove
+                                    </button>
+                                  </li>
+                                `,
+                              )}
+                            </ul>
+                          </div>
+                        `
+                      : html`
+                          <div
+                            style="font-size: 13px; color: #bbb; text-align: center;"
+                          >
+                            No addresses yet. Add one above to restrict access.
+                          </div>
+                        `}
                   </div>
                 `
-              : html``
+              : html`
+                  <div
+                    style="margin-top: 12px; background: rgba(255,255,255,0.03); padding: 16px; border-radius: 10px; color: #bbb; font-size: 13px; text-align: center;"
+                  >
+                    Toggle the allowlist to restrict who can join this lobby.
+                  </div>
+                `
           }
         </div>
 
@@ -880,13 +903,9 @@ export class CreateTournamentModal extends LitElement {
             @click=${this.cancelLobby}
             ?disabled=${!this.lobbyId || this.isCancelling}
             class="start-game-button"
-            style="margin-top: 12px; background: rgba(244, 67, 54, 0.85);"
+            style="background: rgba(244, 67, 54, 0.85);"
           >
-            ${
-              this.isCancelling
-                ? "Cancelling..."
-                : translateText("host_modal.cancel_lobby")
-            }
+            ${this.isCancelling ? "Cancelling..." : this.getCancelGameLabel()}
           </button>
         </div>
 
@@ -948,6 +967,11 @@ export class CreateTournamentModal extends LitElement {
       const eth = usdTarget / this.ethPriceUSD;
       this.betAmount = eth.toFixed(6);
     }
+  }
+
+  private getCancelGameLabel(): string {
+    const label = translateText("host_modal.cancel_game");
+    return label === "host_modal.cancel_game" ? "Cancel Game" : label;
   }
 
   public close() {

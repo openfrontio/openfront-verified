@@ -203,15 +203,15 @@
     "loading": "Loading..."
   },
   "private_lobby": {
-    "title": "Join Private Lobby",
-    "enter_id": "Enter Lobby ID",
+    "title": "Join Private Tournament",
+    "enter_id": "Enter Tournament Code",
     "player": "Player",
     "players": "Players",
-    "join_lobby": "Join Lobby",
-    "checking": "Checking lobby...",
-    "not_found": "Lobby not found. Please check the ID and try again.",
+    "join_lobby": "Join Tournament",
+    "checking": "Checking tournament...",
+    "not_found": "Tournament not found. Please check the code and try again.",
     "error": "An error occurred. Please try again or contact support.",
-    "joined_waiting": "Joined successfully! Waiting for game to start...",
+    "joined_waiting": "Joined successfully! Waiting for tournament to start...",
     "version_mismatch": "This game was created with a different version. Cannot join."
   },
   "public_lobby": {

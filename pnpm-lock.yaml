@@ -70,6 +70,9 @@ importers:
       fastpriorityqueue:
         specifier: ^0.7.5
         version: 0.7.5
+      howler:
+        specifier: ^2.2.4
+        version: 2.2.4
       intl-messageformat:
         specifier: ^10.7.16
         version: 10.7.16
@@ -149,12 +152,18 @@ importers:
       "@types/express":
         specifier: ^4.17.23
         version: 4.17.23
+      "@types/glob":
+        specifier: ^9.0.0
+        version: 9.0.0
       "@types/google-protobuf":
         specifier: ^3.15.12
         version: 3.15.12
       "@types/hammerjs":
         specifier: ^2.0.46
         version: 2.0.46
+      "@types/howler":
+        specifier: ^2.2.12
+        version: 2.2.12
       "@types/jest":
         specifier: ^30.0.0
         version: 30.0.0
@@ -236,6 +245,9 @@ importers:
       file-loader:
         specifier: ^6.2.0
         version: 6.2.0(webpack@5.101.3)
+      glob:
+        specifier: ^11.0.3
+        version: 11.0.3
       globals:
         specifier: ^16.0.0
         version: 16.4.0
@@ -2288,6 +2300,20 @@ packages:
       }
     engines: { node: ">=18.18" }
 
+  "@isaacs/balanced-match@4.0.1":
+    resolution:
+      {
+        integrity: sha512-yzMTt9lEb8Gv7zRioUilSglI0c0smZ9k5D65677DLWLtWJaXIS3CqcGyUFByYKlnUj6TkjLVs54fBl6+TiGQDQ==,
+      }
+    engines: { node: 20 || >=22 }
+
+  "@isaacs/brace-expansion@5.0.0":
+    resolution:
+      {
+        integrity: sha512-ZT55BDLV0yv0RBm2czMiZ+SqCGO7AvmOM3G/w2xhVPH+te0aKgFjmBvGlL1dH+ql2tgGO3MVrbb3jCKyvpgnxA==,
+      }
+    engines: { node: 20 || >=22 }
+
   "@isaacs/cliui@8.0.2":
     resolution:
       {
@@ -4115,6 +4141,13 @@ packages:
         integrity: sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==,
       }
 
+  "@types/glob@9.0.0":
+    resolution:
+      {
+        integrity: sha512-00UxlRaIUvYm4R4W9WYkN8/J+kV8fmOQ7okeH6YFtGWFMt3odD45tpG5yA5wnL7HE6lLgjaTW5n14ju2hl2NNA==,
+      }
+    deprecated: This is a stub types definition. glob provides its own type definitions, so you do not need this installed.
+
   "@types/google-protobuf@3.15.12":
     resolution:
       {
@@ -4131,6 +4164,12 @@ packages:
     resolution:
       {
         integrity: sha512-ynRvcq6wvqexJ9brDMS4BnBLzmr0e14d6ZJTEShTBWKymQiHwlAyGu0ZPEFI2Fh1U53F7tN9ufClWM5KvqkKOw==,
+      }
+
+  "@types/howler@2.2.12":
+    resolution:
+      {
+        integrity: sha512-hy769UICzOSdK0Kn1FBk4gN+lswcj1EKRkmiDtMkUGvFfYJzgaDXmVXkSShS2m89ERAatGIPnTUlp2HhfkVo5g==,
       }
 
   "@types/html-minifier-terser@6.1.0":
@@ -7386,6 +7425,14 @@ packages:
       }
     hasBin: true
 
+  glob@11.0.3:
+    resolution:
+      {
+        integrity: sha512-2Nim7dha1KVkaiF4q6Dj+ngPPMdfvLJEOpZk/jKiUAkqKebpGAWQXAq9z1xu9HKu5lWfqw/FASuccEjyznjPaA==,
+      }
+    engines: { node: 20 || >=22 }
+    hasBin: true
+
   glob@7.2.3:
     resolution:
       {
@@ -7482,6 +7529,12 @@ packages:
     resolution:
       {
         integrity: sha512-Tti3gMqLdZfhOQY1Mzf/AanLiqh1WTiJgEj26ZuYQ9fbkLomzGchCws4FyrSd4VkpBfiNhaE1On+lOz894jvXg==,
+      }
+
+  howler@2.2.4:
+    resolution:
+      {
+        integrity: sha512-iARIBPgcQrwtEr+tALF+rapJ8qSc+Set2GJQl7xT1MQzWaVkFebdJhR3alVlSiUf5U7nAANKuj3aWpwerocD5w==,
       }
 
   hpack.js@2.1.6:
@@ -8020,6 +8073,13 @@ packages:
       {
         integrity: sha512-OGlZQpz2yfahA/Rd1Y8Cd9SIEsqvXkLVoSw/cgwhnhFMDbsQFeZYoJJ7bIZBS9BcamUW96asq/npPWugM+RQBw==,
       }
+
+  jackspeak@4.1.1:
+    resolution:
+      {
+        integrity: sha512-zptv57P3GpL+O0I7VdMJNBZCu+BPHVQUk55Ft8/QCJjTVxrnJHuVuX/0Bl2A6/+2oyR/ZMEuFKwmzqqZ/U5nPQ==,
+      }
+    engines: { node: 20 || >=22 }
 
   jest-changed-files@30.0.5:
     resolution:
@@ -8610,6 +8670,13 @@ packages:
         integrity: sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ==,
       }
 
+  lru-cache@11.2.2:
+    resolution:
+      {
+        integrity: sha512-F9ODfyqML2coTIsQpSkRHnLSZMtkU8Q+mSfcaIyKwy58u+8k5nvAYeiNhsyMARvzNcXJ9QfWVrcPsC9e9rAxtg==,
+      }
+    engines: { node: 20 || >=22 }
+
   lru-cache@5.1.1:
     resolution:
       {
@@ -8784,6 +8851,13 @@ packages:
       {
         integrity: sha512-JIYlbt6g8i5jKfJ3xz7rF0LXmv2TkDxBLUkiBeZ7bAx4GnnNMr8xFpGnOxn6GhTEHx3SjRrZEoU+j04prX1ktg==,
       }
+
+  minimatch@10.1.1:
+    resolution:
+      {
+        integrity: sha512-enIvLvRAFZYXJzkCYG5RKmPfrFArdLv+R+lbQ53BmIMLIry74bjKzX6iHAm8WYamJkhSSEabrWN5D97XnKObjQ==,
+      }
+    engines: { node: 20 || >=22 }
 
   minimatch@3.1.2:
     resolution:
@@ -9299,6 +9373,13 @@ packages:
         integrity: sha512-Xa4Nw17FS9ApQFJ9umLiJS4orGjm7ZzwUrwamcGQuHSzDyth9boKDaycYdDcZDuqYATXw4HFXgaqWTctW/v1HA==,
       }
     engines: { node: ">=16 || 14 >=14.18" }
+
+  path-scurry@2.0.0:
+    resolution:
+      {
+        integrity: sha512-ypGJsmGtdXUOeM5u93TyeIEfEhM6s+ljAhrk5vAvSx8uyY/02OvrZnA0YNGUrPXfpJMgI1ODd3nwz8Npx4O4cg==,
+      }
+    engines: { node: 20 || >=22 }
 
   path-to-regexp@0.1.12:
     resolution:
@@ -13540,6 +13621,12 @@ snapshots:
 
   "@humanwhocodes/retry@0.4.3": {}
 
+  "@isaacs/balanced-match@4.0.1": {}
+
+  "@isaacs/brace-expansion@5.0.0":
+    dependencies:
+      "@isaacs/balanced-match": 4.0.1
+
   "@isaacs/cliui@8.0.2":
     dependencies:
       string-width: 5.1.2
@@ -15192,11 +15279,17 @@ snapshots:
 
   "@types/geojson@7946.0.16": {}
 
+  "@types/glob@9.0.0":
+    dependencies:
+      glob: 11.0.3
+
   "@types/google-protobuf@3.15.12": {}
 
   "@types/gradient-parser@0.1.5": {}
 
   "@types/hammerjs@2.0.46": {}
+
+  "@types/howler@2.2.12": {}
 
   "@types/html-minifier-terser@6.1.0": {}
 
@@ -17559,6 +17652,15 @@ snapshots:
       package-json-from-dist: 1.0.1
       path-scurry: 1.11.1
 
+  glob@11.0.3:
+    dependencies:
+      foreground-child: 3.3.1
+      jackspeak: 4.1.1
+      minimatch: 10.1.1
+      minipass: 7.1.2
+      package-json-from-dist: 1.0.1
+      path-scurry: 2.0.0
+
   glob@7.2.3:
     dependencies:
       fs.realpath: 1.0.0
@@ -17614,6 +17716,8 @@ snapshots:
       hash.js: 1.1.7
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
+
+  howler@2.2.4: {}
 
   hpack.js@2.1.6:
     dependencies:
@@ -17918,6 +18022,10 @@ snapshots:
       "@isaacs/cliui": 8.0.2
     optionalDependencies:
       "@pkgjs/parseargs": 0.11.0
+
+  jackspeak@4.1.1:
+    dependencies:
+      "@isaacs/cliui": 8.0.2
 
   jest-changed-files@30.0.5:
     dependencies:
@@ -18481,6 +18589,8 @@ snapshots:
 
   lru-cache@10.4.3: {}
 
+  lru-cache@11.2.2: {}
+
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
@@ -18558,6 +18668,10 @@ snapshots:
   minimalistic-assert@1.0.1: {}
 
   minimalistic-crypto-utils@1.0.1: {}
+
+  minimatch@10.1.1:
+    dependencies:
+      "@isaacs/brace-expansion": 5.0.0
 
   minimatch@3.1.2:
     dependencies:
@@ -18867,6 +18981,11 @@ snapshots:
   path-scurry@1.11.1:
     dependencies:
       lru-cache: 10.4.3
+      minipass: 7.1.2
+
+  path-scurry@2.0.0:
+    dependencies:
+      lru-cache: 11.2.2
       minipass: 7.1.2
 
   path-to-regexp@0.1.12: {}

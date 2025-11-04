@@ -316,21 +316,22 @@ export class JoinPrivateTournamentModal extends LitElement {
 
   private renderDetails() {
     if (this.loading) {
-      return html`<div style="text-align:center; color:#9ca3af; padding:12px;">
-        Loading…
-      </div>`;
+      return html`
+        <div class="join-private-tournament__details">
+          <div class="join-private-tournament__state">Loading…</div>
+        </div>
+      `;
     }
 
     if (!this.details) {
-      return html`<div class="options-section">
-        <div class="option-title">
-          ${translateText("private_lobby.enter_id")}
+      return html`
+        <div class="join-private-tournament__details">
+          <div class="join-private-tournament__state">
+            Enter a tournament code above and press “Load Tournament” to view
+            its details.
+          </div>
         </div>
-        <div style="color:#9ca3af; font-size:14px;">
-          Enter a tournament code above and press “Load Tournament” to view its
-          details.
-        </div>
-      </div>`;
+      `;
     }
 
     const { lobbyInfo, gameInfo } = this.details;
@@ -382,22 +383,24 @@ export class JoinPrivateTournamentModal extends LitElement {
     }
 
     return html`
-      <div class="options-layout" style="gap: 16px;">
-        <div class="options-section">
-          <div class="option-title">Tournament Details</div>
-          ${summaryItems.map((item) =>
-            this.renderDetailItem(item.label, item.value),
-          )}
+      <div class="join-private-tournament__details">
+        <div class="options-layout">
+          <div class="options-section">
+            <div class="option-title">Tournament Details</div>
+            ${summaryItems.map((item) =>
+              this.renderDetailItem(item.label, item.value),
+            )}
+          </div>
+          ${mapSettings.length
+            ? html`<div class="options-section">
+                <div class="option-title">Game Settings</div>
+                ${mapSettings.map((item) =>
+                  this.renderDetailItem(item.label, item.value),
+                )}
+              </div>`
+            : ""}
+          ${this.renderWaitingRoom()}
         </div>
-        ${mapSettings.length
-          ? html`<div class="options-section">
-              <div class="option-title">Game Settings</div>
-              ${mapSettings.map((item) =>
-                this.renderDetailItem(item.label, item.value),
-              )}
-            </div>`
-          : ""}
-        ${this.renderWaitingRoom()}
       </div>
     `;
   }
@@ -430,67 +433,82 @@ export class JoinPrivateTournamentModal extends LitElement {
 
     return html`
       <o-modal title="${title}">
-        <div class="lobby-id-box">
-          <input
-            type="text"
-            id="tournamentIdInput"
-            placeholder=${translateText("private_lobby.enter_id")}
-            .value=${this.tournamentId}
-            @input=${this.handleInput}
-            @keyup=${this.handleKeyUp}
-          />
-          <button
-            @click=${this.pasteFromClipboard}
-            class="lobby-id-paste-button"
-            title="Paste from clipboard"
-          >
-            <svg
-              class="lobby-id-paste-button-icon"
-              stroke="currentColor"
-              fill="currentColor"
-              stroke-width="0"
-              viewBox="0 0 32 32"
-              height="18px"
-              width="18px"
-              xmlns="http://www.w3.org/2000/svg"
+        <div class="join-private-tournament">
+          <div class="join-private-tournament__input-group">
+            <label
+              class="join-private-tournament__label"
+              for="tournamentIdInput"
             >
-              <path
-                d="M 15 3 C 13.742188 3 12.847656 3.890625 12.40625 5 L 5 5 L 5 28 L 13 28 L 13 30 L 27 30 L 27 14 L 25 14 L 25 5 L 17.59375 5 C 17.152344 3.890625 16.257813 3 15 3 Z M 15 5 C 15.554688 5 16 5.445313 16 6 L 16 7 L 19 7 L 19 9 L 11 9 L 11 7 L 14 7 L 14 6 C 14 5.445313 14.445313 5 15 5 Z M 7 7 L 9 7 L 9 11 L 21 11 L 21 7 L 23 7 L 23 14 L 13 14 L 13 26 L 7 26 Z M 15 16 L 25 16 L 25 28 L 15 28 Z"
-              ></path>
-            </svg>
-          </button>
-        </div>
+              ${translateText("private_lobby.enter_id")}
+            </label>
+            <div class="join-private-tournament__input-row">
+              <input
+                class="join-private-tournament__input"
+                type="text"
+                id="tournamentIdInput"
+                placeholder=${translateText("private_lobby.enter_id")}
+                .value=${this.tournamentId}
+                @input=${this.handleInput}
+                @keyup=${this.handleKeyUp}
+              />
+              <button
+                @click=${this.pasteFromClipboard}
+                class="join-private-tournament__paste"
+                title="Paste from clipboard"
+                aria-label="Paste from clipboard"
+                type="button"
+              >
+                <svg
+                  stroke="currentColor"
+                  fill="currentColor"
+                  stroke-width="0"
+                  viewBox="0 0 32 32"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M 15 3 C 13.742188 3 12.847656 3.890625 12.40625 5 L 5 5 L 5 28 L 13 28 L 13 30 L 27 30 L 27 14 L 25 14 L 25 5 L 17.59375 5 C 17.152344 3.890625 16.257813 3 15 3 Z M 15 5 C 15.554688 5 16 5.445313 16 6 L 16 7 L 19 7 L 19 9 L 11 9 L 11 7 L 14 7 L 14 6 C 14 5.445313 14.445313 5 15 5 Z M 7 7 L 9 7 L 9 11 L 21 11 L 21 7 L 23 7 L 23 14 L 13 14 L 13 26 L 7 26 Z M 15 16 L 25 16 L 25 28 L 15 28 Z"
+                  ></path>
+                </svg>
+              </button>
+            </div>
+          </div>
 
-        <div class="flex justify-center mt-4">
-          <o-button
-            title="Load Tournament"
-            block
-            secondary
-            ?disabled=${this.loading || !this.tournamentId.trim()}
-            @click=${this.loadDetails}
-          ></o-button>
-        </div>
+          <div class="join-private-tournament__button-row">
+            <o-button
+              title="Load Tournament"
+              block
+              secondary
+              ?disabled=${this.loading || !this.tournamentId.trim()}
+              @click=${this.loadDetails}
+              style="width: 100%; max-width: 320px;"
+            ></o-button>
+          </div>
 
-        ${this.error
-          ? html`<div class="message-area error show">${this.error}</div>`
-          : ""}
-        ${joinStatus
-          ? html`<div class="message-area ${joinStatus.type} show">
-              ${joinStatus.message}
-            </div>`
-          : ""}
-        ${this.renderDetails()}
-
-        <div class="flex justify-center mt-4">
+          ${this.error
+            ? html`<div class="join-private-tournament__message">
+                <div class="message-area error show">${this.error}</div>
+              </div>`
+            : ""}
+          ${joinStatus
+            ? html`<div class="join-private-tournament__message">
+                <div class="message-area ${joinStatus.type} show">
+                  ${joinStatus.message}
+                </div>
+              </div>`
+            : ""}
+          ${this.renderDetails()}
           ${this.details && !this.joined
-            ? html`<o-button
-                title=${this.joining
-                  ? "Joining…"
-                  : translateText("private_lobby.join_lobby")}
-                block
-                ?disabled=${this.joining}
-                @click=${this.joinTournament}
-              ></o-button>`
+            ? html`<div class="join-private-tournament__button-row">
+                <o-button
+                  title=${this.joining
+                    ? "Joining…"
+                    : translateText("private_lobby.join_lobby")}
+                  block
+                  ?disabled=${this.joining}
+                  @click=${this.joinTournament}
+                  style="width: 100%; max-width: 320px;"
+                ></o-button>
+              </div>`
             : ""}
         </div>
       </o-modal>
