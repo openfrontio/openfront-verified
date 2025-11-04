@@ -132,6 +132,10 @@ export class SendEmbargoIntentEvent implements GameEvent {
   ) {}
 }
 
+export class SendEmbargoAllIntentEvent implements GameEvent {
+  constructor(public readonly action: "start" | "stop") {}
+}
+
 export class SendDeleteUnitIntentEvent implements GameEvent {
   constructor(public readonly unitId: number) {}
 }
@@ -225,6 +229,9 @@ export class Transport {
     this.eventBus.on(SendQuickChatEvent, (e) => this.onSendQuickChatIntent(e));
     this.eventBus.on(SendEmbargoIntentEvent, (e) =>
       this.onSendEmbargoIntent(e),
+    );
+    this.eventBus.on(SendEmbargoAllIntentEvent, (e) =>
+      this.onSendEmbargoAllIntent(e),
     );
     this.eventBus.on(BuildUnitIntentEvent, (e) => this.onBuildUnitIntent(e));
 
@@ -394,11 +401,7 @@ export class Transport {
       lastTurn: numTurns,
       token: this.lobbyConfig.token,
       username: this.lobbyConfig.playerName,
-      cosmetics: {
-        flag: this.lobbyConfig.flag,
-        patternName: this.lobbyConfig.pattern?.name,
-        patternColorPaletteName: this.lobbyConfig.pattern?.colorPalette?.name,
-      },
+      cosmetics: this.lobbyConfig.cosmetics,
     } satisfies ClientJoinMessage);
   }
 
@@ -517,7 +520,7 @@ export class Transport {
       type: "donate_gold",
       clientID: this.lobbyConfig.clientID,
       recipient: event.recipient.id(),
-      gold: event.gold,
+      gold: event.gold ? Number(event.gold) : null,
     });
   }
 
@@ -545,6 +548,14 @@ export class Transport {
       type: "embargo",
       clientID: this.lobbyConfig.clientID,
       targetID: event.target.id(),
+      action: event.action,
+    });
+  }
+
+  private onSendEmbargoAllIntent(event: SendEmbargoAllIntentEvent) {
+    this.sendIntent({
+      type: "embargo_all",
+      clientID: this.lobbyConfig.clientID,
       action: event.action,
     });
   }

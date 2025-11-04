@@ -94,6 +94,7 @@ export class PlayerImpl implements Player {
   private relations = new Map<Player, number>();
 
   private lastDeleteUnitTick: Tick = -1;
+  private lastEmbargoAllTick: Tick = -1;
 
   public _incomingAttacks: Attack[] = [];
   public _outgoingAttacks: Attack[] = [];
@@ -141,6 +142,7 @@ export class PlayerImpl implements Player {
       allies: this.alliances().map((a) => a.other(this).smallID()),
       embargoes: new Set([...this.embargoes.keys()].map((p) => p.toString())),
       isTraitor: this.isTraitor(),
+      traitorRemainingTicks: this.getTraitorRemainingTicks(),
       targets: this.targets().map((p) => p.smallID()),
       outgoingEmojis: this.outgoingEmojis(),
       outgoingAttacks: this._outgoingAttacks.map((a) => {
@@ -173,6 +175,7 @@ export class PlayerImpl implements Player {
       ),
       hasSpawned: this.hasSpawned(),
       betrayals: stats?.betrayals,
+      lastDeleteUnitTick: this.lastDeleteUnitTick,
     };
   }
 
@@ -388,6 +391,13 @@ export class PlayerImpl implements Player {
     if (other === this) {
       return false;
     }
+    if (this.isDisconnected() || other.isDisconnected()) {
+      // Disconnected players are marked as not-friendly even if they are allies,
+      // so we need to return early if either player is disconnected.
+      // Otherise we could end up sending an alliance request to someone
+      // we are already allied with.
+      return false;
+    }
     if (this.isFriendly(other) || !this.isAlive()) {
       return false;
     }
@@ -418,11 +428,15 @@ export class PlayerImpl implements Player {
   }
 
   isTraitor(): boolean {
-    return (
-      this.markedTraitorTick >= 0 &&
-      this.mg.ticks() - this.markedTraitorTick <
-        this.mg.config().traitorDuration()
-    );
+    return this.getTraitorRemainingTicks() > 0;
+  }
+
+  getTraitorRemainingTicks(): number {
+    if (this.markedTraitorTick < 0) return 0;
+    const elapsed = this.mg.ticks() - this.markedTraitorTick;
+    const duration = this.mg.config().traitorDuration();
+    const remaining = duration - elapsed;
+    return remaining > 0 ? remaining : 0;
   }
 
   markTraitor(): void {
@@ -571,7 +585,11 @@ export class PlayerImpl implements Player {
   }
 
   canDonateGold(recipient: Player): boolean {
-    if (!this.isFriendly(recipient)) {
+    if (
+      !this.isAlive() ||
+      !recipient.isAlive() ||
+      !this.isFriendly(recipient)
+    ) {
       return false;
     }
     if (
@@ -594,7 +612,11 @@ export class PlayerImpl implements Player {
   }
 
   canDonateTroops(recipient: Player): boolean {
-    if (!this.isFriendly(recipient)) {
+    if (
+      !this.isAlive() ||
+      !recipient.isAlive() ||
+      !this.isFriendly(recipient)
+    ) {
       return false;
     }
     if (
@@ -666,6 +688,28 @@ export class PlayerImpl implements Player {
 
   recordDeleteUnit(): void {
     this.lastDeleteUnitTick = this.mg.ticks();
+  }
+
+  canEmbargoAll(): boolean {
+    // Cooldown gate
+    if (
+      this.mg.ticks() - this.lastEmbargoAllTick <
+      this.mg.config().embargoAllCooldown()
+    ) {
+      return false;
+    }
+    // At least one eligible player exists
+    for (const p of this.mg.players()) {
+      if (p.id() === this.id()) continue;
+      if (p.type() === PlayerType.Bot) continue;
+      if (this.isOnSameTeam(p)) continue;
+      return true;
+    }
+    return false;
+  }
+
+  recordEmbargoAll(): void {
+    this.lastEmbargoAllTick = this.mg.ticks();
   }
 
   hasEmbargoAgainst(other: Player): boolean {
@@ -740,7 +784,10 @@ export class PlayerImpl implements Player {
     return this._team === other.team();
   }
 
-  isFriendly(other: Player): boolean {
+  isFriendly(other: Player, treatAFKFriendly: boolean = false): boolean {
+    if (other.isDisconnected() && !treatAFKFriendly) {
+      return false;
+    }
     return this.isOnSameTeam(other) || this.isAlliedWith(other);
   }
 
@@ -836,20 +883,23 @@ export class PlayerImpl implements Player {
       return false;
     }
     const unit = existing[0].unit;
-    if (!this.canUpgradeUnit(unit.type())) {
+    if (!this.canUpgradeUnit(unit)) {
       return false;
     }
     return unit;
   }
 
-  public canUpgradeUnit(unitType: UnitType): boolean {
-    if (!this.mg.config().unitInfo(unitType).upgradable) {
+  public canUpgradeUnit(unit: Unit): boolean {
+    if (unit.isMarkedForDeletion()) {
       return false;
     }
-    if (this.mg.config().isUnitDisabled(unitType)) {
+    if (!this.mg.config().unitInfo(unit.type()).upgradable) {
       return false;
     }
-    if (this._gold < this.mg.config().unitInfo(unitType).cost(this)) {
+    if (this.mg.config().isUnitDisabled(unit.type())) {
+      return false;
+    }
+    if (this._gold < this.mg.config().unitInfo(unit.type()).cost(this)) {
       return false;
     }
     return true;
@@ -862,21 +912,22 @@ export class PlayerImpl implements Player {
     this.recordUnitConstructed(unit.type());
   }
 
-  public buildableUnits(tile: TileRef): BuildableUnit[] {
-    const validTiles = this.validStructureSpawnTiles(tile);
+  public buildableUnits(tile: TileRef | null): BuildableUnit[] {
+    const validTiles = tile !== null ? this.validStructureSpawnTiles(tile) : [];
     return Object.values(UnitType).map((u) => {
       let canUpgrade: number | false = false;
       if (!this.mg.inSpawnPhase()) {
-        const existingUnit = this.findUnitToUpgrade(u, tile);
+        const existingUnit = tile !== null && this.findUnitToUpgrade(u, tile);
         if (existingUnit !== false) {
           canUpgrade = existingUnit.id();
         }
       }
       return {
         type: u,
-        canBuild: this.mg.inSpawnPhase()
-          ? false
-          : this.canBuild(u, tile, validTiles),
+        canBuild:
+          this.mg.inSpawnPhase() || tile === null
+            ? false
+            : this.canBuild(u, tile, validTiles),
         canUpgrade: canUpgrade,
         cost: this.mg.config().unitInfo(u).cost(this),
       } as BuildableUnit;

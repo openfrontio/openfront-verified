@@ -30,7 +30,7 @@
     />
     <meta
       property="og:image"
-      content="https://openfront.io/resources/images/GameplayScreenshot.png"
+      content="https://openfront.io/images/GameplayScreenshot.png"
     />
     <meta property="og:type" content="game" />
 
@@ -91,11 +91,17 @@
       document.documentElement.className = "preload";
     </script>
 
-    <!-- Playwire ads -->
+    <!-- Publift/Fuse ads -->
+    <script
+      async
+      src="https://cdn.fuseplatform.net/publift/tags/2/4121/fuse.js"
+    ></script>
+
     <script>
-      window.ramp = window.ramp || {};
-      window.ramp.que = window.ramp.que || [];
-      window.ramp.passiveMode = true;
+      window.googletag = window.googletag || { cmd: [] };
+      googletag.cmd.push(function () {
+        googletag.pubads().set("page_url", "http://openfront.io ");
+      });
     </script>
 
     <!-- Analytics -->
@@ -197,7 +203,7 @@
     </header>
     <div class="bg-image"></div>
 
-    <gutter-ad-modal></gutter-ad-modal>
+    <gutter-ads></gutter-ads>
 
     <!-- Main container with responsive padding -->
     <main class="flex justify-center flex-grow">
@@ -286,7 +292,6 @@
     <div id="app"></div>
     <div id="radialMenu" class="radial-menu"></div>
     <div class="flex gap-2 fixed right-[10px] top-[10px] z-50 flex-col">
-      <options-menu></options-menu>
       <player-info-overlay></player-info-overlay>
     </div>
     <div
@@ -370,16 +375,6 @@
           >
             Terms of Service
           </a>
-          <p style="text-align: center">
-            <a
-              href="https://www.playwire.com/contact-direct-sales"
-              data-i18n="main.advertise"
-              class="t-link"
-              target="_blank"
-              rel="noopener"
-              >Advertise</a
-            >
-          </p>
         </div>
       </div>
     </footer>
@@ -399,6 +394,7 @@
     </div>
     <settings-modal></settings-modal>
     <player-panel></player-panel>
+    <spawn-timer></spawn-timer>
     <help-modal></help-modal>
     <dark-mode-button></dark-mode-button>
     <alert-frame></alert-frame>
@@ -407,7 +403,6 @@
     <multi-tab-modal></multi-tab-modal>
     <news-modal></news-modal>
     <game-left-sidebar></game-left-sidebar>
-    <spawn-ad></spawn-ad>
     <flag-input-modal></flag-input-modal>
     <fps-display></fps-display>
     <div
@@ -437,9 +432,6 @@
         });
       });
     </script>
-
-    <!-- Playwire ads -->
-    <script async src="//cdn.intergient.com/1025558/75940/ramp.js"></script>
 
     <!-- Analytics -->
     <script

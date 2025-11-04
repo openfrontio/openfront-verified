@@ -7,12 +7,13 @@ import {
   RailroadUpdate,
 } from "../../../core/game/GameUpdates";
 import { GameView, UnitView } from "../../../core/game/GameView";
+import SoundManager, { SoundEffect } from "../../sound/SoundManager";
 import { renderNumber } from "../../Utils";
 import { AnimatedSpriteLoader } from "../AnimatedSpriteLoader";
 import { conquestFxFactory } from "../fx/ConquestFx";
 import { Fx, FxType } from "../fx/Fx";
 import { nukeFxFactory, ShockwaveFx } from "../fx/NukeFx";
-import { SpriteFx } from "../fx/SpriteFx";
+import { FadeFx, MoveSpriteFx, SpriteFx } from "../fx/SpriteFx";
 import { TargetFx } from "../fx/TargetFx";
 import { TextFx } from "../fx/TextFx";
 import { UnitExplosionFx } from "../fx/UnitExplosionFx";
@@ -20,6 +21,8 @@ import { Layer } from "./Layer";
 export class FxLayer implements Layer {
   private canvas: HTMLCanvasElement;
   private context: CanvasRenderingContext2D;
+  private lastRandomEvent: number = 0;
+  private randomEventRate: number = 8;
 
   private lastRefresh: number = 0;
   private refreshRate: number = 10;
@@ -39,6 +42,14 @@ export class FxLayer implements Layer {
   }
 
   tick() {
+    if (!this.game.config().userSettings()?.fxLayer()) {
+      return;
+    }
+    this.lastRandomEvent += 1;
+    if (this.lastRandomEvent > this.randomEventRate) {
+      this.lastRandomEvent = 0;
+      this.randomEvent();
+    }
     this.manageBoatTargetFx();
     this.game
       .updatesSinceLastTick()
@@ -115,9 +126,70 @@ export class FxLayer implements Layer {
     this.allFx.push(textFx);
   }
 
-  addTargetFx(x: number, y: number) {
-    const fx = new TargetFx(x, y, 1200, 12);
-    this.allFx.push(fx);
+  randomEvent() {
+    const randX = Math.floor(Math.random() * this.game.width());
+    const randY = Math.floor(Math.random() * this.game.height());
+    const ref = this.game.ref(randX, randY);
+    if (this.game.isOcean(ref) && !this.game.isShoreline(ref)) {
+      const animation = Math.floor(Math.random() * 4);
+      if (animation === 0) {
+        const fx = new SpriteFx(
+          this.animatedSpriteLoader,
+          randX,
+          randY,
+          FxType.Shark,
+        );
+        this.allFx.push(fx);
+      } else if (animation === 1) {
+        const fx = new SpriteFx(
+          this.animatedSpriteLoader,
+          randX,
+          randY,
+          FxType.Bubble,
+        );
+        this.allFx.push(fx);
+      } else if (animation === 2) {
+        const fx = new MoveSpriteFx(
+          new SpriteFx(
+            this.animatedSpriteLoader,
+            randX,
+            randY,
+            FxType.Tornado,
+            6000,
+          ),
+          randX - 40,
+          randY,
+          0.1,
+          0.8,
+        );
+        this.allFx.push(fx);
+      } else if (animation === 3) {
+        const fx = new FadeFx(
+          new SpriteFx(
+            this.animatedSpriteLoader,
+            randX,
+            randY,
+            FxType.Tentacle,
+          ),
+          0.1,
+          0.8,
+        );
+        this.allFx.push(fx);
+      }
+    } else {
+      const ghost = new FadeFx(
+        new SpriteFx(
+          this.animatedSpriteLoader,
+          randX,
+          randY,
+          FxType.MiniSmoke,
+          4000,
+        ),
+        0.1,
+        0.8,
+      );
+      this.allFx.push(ghost);
+    }
   }
 
   onUnitEvent(unit: UnitView) {
@@ -126,14 +198,14 @@ export class FxLayer implements Layer {
         const my = this.game.myPlayer();
         if (!my) return;
         if (unit.owner() !== my) return;
-        if (!unit.isActive()) return;
+        if (!unit.isActive() || unit.retreating()) return;
         if (this.boatTargetFxByUnitId.has(unit.id())) return;
         const t = unit.targetTile();
         if (t !== undefined) {
           const x = this.game.x(t);
           const y = this.game.y(t);
           // persistent until boat finishes or retreats
-          const fx = new TargetFx(x, y, 0, 12, true);
+          const fx = new TargetFx(x, y, 0, true);
           this.allFx.push(fx);
           this.boatTargetFxByUnitId.set(unit.id(), fx);
         }
@@ -154,6 +226,14 @@ export class FxLayer implements Layer {
         break;
       case UnitType.Train:
         this.onTrainEvent(unit);
+        break;
+      case UnitType.DefensePost:
+      case UnitType.City:
+      case UnitType.Port:
+      case UnitType.MissileSilo:
+      case UnitType.SAMLauncher:
+      case UnitType.Factory:
+        this.onStructureEvent(unit);
         break;
     }
   }
@@ -216,6 +296,8 @@ export class FxLayer implements Layer {
       return;
     }
 
+    SoundManager.playSoundEffect(SoundEffect.KaChing);
+
     const conquestFx = conquestFxFactory(
       this.animatedSpriteLoader,
       conquest,
@@ -245,6 +327,20 @@ export class FxLayer implements Layer {
         this.theme,
       );
       this.allFx.push(sinkingShip);
+    }
+  }
+
+  onStructureEvent(unit: UnitView) {
+    if (!unit.isActive()) {
+      const x = this.game.x(unit.lastTile());
+      const y = this.game.y(unit.lastTile());
+      const explosion = new SpriteFx(
+        this.animatedSpriteLoader,
+        x,
+        y,
+        FxType.BuildingExplosion,
+      );
+      this.allFx.push(explosion);
     }
   }
 

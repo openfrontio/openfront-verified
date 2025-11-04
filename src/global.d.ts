@@ -41,3 +41,8 @@ declare module "*.xml" {
   export default value;
 }
 declare const __PRIVY_APP_ID__: string;
+
+declare module "*.mp3" {
+  const value: string;
+  export default value;
+}

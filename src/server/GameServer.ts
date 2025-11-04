@@ -21,7 +21,7 @@ import {
   ServerTurnMessage,
   Turn,
 } from "../core/Schemas";
-import { createPartialGameRecord } from "../core/Util";
+import { createPartialGameRecord, getClanTag } from "../core/Util";
 import { archive, finalizeGameRecord } from "./Archive";
 import { Client } from "./Client";
 import {
@@ -726,6 +726,7 @@ export class GameServer {
             this.allClients.get(player.clientID)?.persistentID ?? "",
           stats,
           cosmetics: player.cosmetics,
+          clanTag: getClanTag(player.username) ?? undefined,
         } satisfies PlayerRecord;
       },
     );

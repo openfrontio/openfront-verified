@@ -123,6 +123,7 @@ export interface UnitUpdate {
   reachedTarget: boolean;
   retreating: boolean;
   targetable: boolean;
+  markedForDeletion: number | false;
   targetUnitId?: number; // Only for trade ships
   targetTile?: TileRef; // Only for nukes
   health?: number;
@@ -160,6 +161,7 @@ export interface PlayerUpdate {
   allies: number[];
   embargoes: Set<PlayerID>;
   isTraitor: boolean;
+  traitorRemainingTicks?: number;
   targets: number[];
   outgoingEmojis: EmojiMessage[];
   outgoingAttacks: AttackUpdate[];
@@ -168,6 +170,7 @@ export interface PlayerUpdate {
   alliances: AllianceView[];
   hasSpawned: boolean;
   betrayals?: bigint;
+  lastDeleteUnitTick: Tick;
 }
 
 export interface AllianceView {

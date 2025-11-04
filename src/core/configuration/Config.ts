@@ -130,6 +130,8 @@ export interface Config {
   emojiMessageCooldown(): Tick;
   emojiMessageDuration(): Tick;
   donateCooldown(): Tick;
+  embargoAllCooldown(): Tick;
+  deletionMarkDuration(): Tick;
   deleteUnitCooldown(): Tick;
   defaultDonationAmount(sender: Player): number;
   unitInfo(type: UnitType): UnitInfo;
@@ -183,7 +185,7 @@ export interface Theme {
   // Don't call directly, use PlayerView
   territoryColor(playerInfo: PlayerView): Colord;
   // Don't call directly, use PlayerView
-  borderColor(playerInfo: PlayerView): Colord;
+  borderColor(territoryColor: Colord): Colord;
   // Don't call directly, use PlayerView
   defendedBorderColors(territoryColor: Colord): { light: Colord; dark: Colord };
   focusedBorderColor(): Colord;

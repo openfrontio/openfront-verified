@@ -18,7 +18,7 @@ export class PastelTheme implements Theme {
   private nationColorAllocator = new ColorAllocator(nationColors, nationColors);
 
   private background = colord({ r: 60, g: 60, b: 60 });
-  private shore = colord({ r: 204, g: 203, b: 158 });
+  private shore = colord({ r: 223, g: 187, b: 132 });
   private falloutColors = [
     colord({ r: 120, g: 255, b: 71 }), // Original color
     colord({ r: 130, g: 255, b: 85 }), // Slightly lighter
@@ -26,8 +26,8 @@ export class PastelTheme implements Theme {
     colord({ r: 125, g: 255, b: 75 }), // Warmer tint
     colord({ r: 115, g: 250, b: 68 }), // Cooler tint
   ];
-  private water = colord({ r: 70, g: 132, b: 180 });
-  private shorelineWater = colord({ r: 100, g: 143, b: 255 });
+  private water = colord({ r: 80, g: 76, b: 179 });
+  private shorelineWater = colord({ r: 100, g: 110, b: 255 });
 
   private _selfColor = colord({ r: 0, g: 255, b: 0 });
   private _allyColor = colord({ r: 255, g: 255, b: 0 });
@@ -55,19 +55,8 @@ export class PastelTheme implements Theme {
   }
 
   // Don't call directly, use PlayerView
-  borderColor(player: PlayerView): Colord {
-    if (this.borderColorCache.has(player.id())) {
-      return this.borderColorCache.get(player.id())!;
-    }
-    const tc = this.territoryColor(player).rgba;
-    const color = colord({
-      r: Math.max(tc.r - 40, 0),
-      g: Math.max(tc.g - 40, 0),
-      b: Math.max(tc.b - 40, 0),
-    });
-
-    this.borderColorCache.set(player.id(), color);
-    return color;
+  borderColor(territoryColor: Colord): Colord {
+    return territoryColor.darken(0.125);
   }
 
   defendedBorderColors(territoryColor: Colord): {
@@ -95,7 +84,7 @@ export class PastelTheme implements Theme {
     }
     switch (gm.terrainType(tile)) {
       case TerrainType.Ocean:
-      case TerrainType.Lake:
+      case TerrainType.Lake: {
         const w = this.water.rgba;
         if (gm.isShoreline(tile) && gm.isWater(tile)) {
           return this.shorelineWater;
@@ -105,18 +94,18 @@ export class PastelTheme implements Theme {
           g: Math.max(w.g - 10 + (11 - Math.min(mag, 10)), 0),
           b: Math.max(w.b - 10 + (11 - Math.min(mag, 10)), 0),
         });
-
+      }
       case TerrainType.Plains:
         return colord({
-          r: 190,
-          g: 220 - 2 * mag,
-          b: 138,
+          r: 216,
+          g: 205 - 2 * mag,
+          b: 127,
         });
       case TerrainType.Highland:
         return colord({
-          r: 200 + 2 * mag,
-          g: 183 + 2 * mag,
-          b: 138 + 2 * mag,
+          r: 223 + 2 * mag,
+          g: 187 + 2 * mag,
+          b: 132 + 2 * mag,
         });
       case TerrainType.Mountain:
         return colord({
