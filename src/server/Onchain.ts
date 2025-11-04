@@ -27,10 +27,20 @@ const ERC20_SYMBOL_ABI = [
   },
 ] as const;
 
+const ERC20_DECIMALS_ABI = [
+  {
+    type: "function",
+    name: "decimals",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+] as const;
+
 // Configuration
 const RPC_URL = process.env.RPC_URL ?? "https://carrot.megaeth.com/rpc";
 const CONTRACT_ADDRESS = (process.env.CONTRACT_ADDRESS ??
-  "0x0000000000000000000000000000000000000000") as Address;
+  "0x89F80517908556a9C1D165fe34bD6DbCD91D0762") as Address;
 const MNEMONIC = process.env.MNEMONIC;
 
 // Always use Base Sepolia
@@ -156,6 +166,9 @@ export type LobbyInfo = {
   totalPrize: bigint;
   wagerToken: Address;
   wagerSymbol: string;
+  wagerDecimals: number;
+  isNative: boolean;
+  allowlistEnabled: boolean;
 };
 
 export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
@@ -177,14 +190,39 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
       totalPrize,
       stakeToken,
     ] = result;
-    const symbol =
+    const [allowlistFlag, symbol] = await Promise.all([
+      publicClient.readContract({
+        address: CONTRACT_ADDRESS,
+        abi: ContractABI as unknown as any,
+        functionName: "isAllowlistEnabled",
+        args: [lobbyIdBytes32],
+      }) as Promise<boolean>,
       stakeToken === ZERO_ADDRESS
-        ? "ETH"
-        : ((await publicClient.readContract({
+        ? Promise.resolve("ETH")
+        : (publicClient.readContract({
             address: stakeToken,
             abi: ERC20_SYMBOL_ABI,
             functionName: "symbol",
-          })) as string);
+          }) as Promise<string>),
+    ]);
+
+    let decimals = 18;
+    if (stakeToken !== ZERO_ADDRESS) {
+      try {
+        decimals = Number(
+          await publicClient.readContract({
+            address: stakeToken,
+            abi: ERC20_DECIMALS_ABI,
+            functionName: "decimals",
+          }),
+        );
+      } catch (error) {
+        log.warn(
+          `Failed to fetch token decimals for ${stakeToken}: ${String(error)}`,
+        );
+        decimals = 18;
+      }
+    }
 
     if (host === "0x0000000000000000000000000000000000000000") return null;
     return {
@@ -196,9 +234,34 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
       totalPrize,
       wagerToken: stakeToken,
       wagerSymbol: symbol,
+      wagerDecimals: decimals,
+      isNative: stakeToken === ZERO_ADDRESS,
+      allowlistEnabled: allowlistFlag,
     };
   } catch (e) {
     return null;
+  }
+}
+
+export async function isAddressAllowlistedOnChain(
+  lobbyId: string,
+  account: Address,
+): Promise<boolean> {
+  try {
+    const lobbyIdBytes32 = stringToBytes32(lobbyId);
+    return (await publicClient.readContract({
+      address: CONTRACT_ADDRESS,
+      abi: ContractABI as unknown as any,
+      functionName: "isAllowlisted",
+      args: [lobbyIdBytes32, getAddress(account)],
+    })) as boolean;
+  } catch (e) {
+    log.warn("Failed to check allowlist status", {
+      lobbyId,
+      account,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return false;
   }
 }
 

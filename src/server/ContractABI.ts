@@ -30,6 +30,24 @@ export const ContractABI = [
   },
   {
     type: "function",
+    name: "addToPrizePool",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+      {
+        name: "amount",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    outputs: [],
+    stateMutability: "payable",
+  },
+  {
+    type: "function",
     name: "cancelLobby",
     inputs: [
       {
@@ -72,6 +90,11 @@ export const ContractABI = [
         name: "isPublic",
         type: "bool",
         internalType: "bool",
+      },
+      {
+        name: "stakeToken",
+        type: "address",
+        internalType: "address",
       },
     ],
     outputs: [],
@@ -174,6 +197,11 @@ export const ContractABI = [
         name: "totalPrize",
         type: "uint256",
         internalType: "uint256",
+      },
+      {
+        name: "stakeToken",
+        type: "address",
+        internalType: "address",
       },
     ],
     stateMutability: "view",
@@ -424,6 +452,11 @@ export const ContractABI = [
         name: "totalPrize",
         type: "uint256",
         internalType: "uint256",
+      },
+      {
+        name: "stakeToken",
+        type: "address",
+        internalType: "address",
       },
     ],
     stateMutability: "view",
@@ -776,6 +809,31 @@ export const ContractABI = [
     anonymous: false,
   },
   {
+    type: "event",
+    name: "PrizePoolSponsored",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        indexed: true,
+        internalType: "bytes32",
+      },
+      {
+        name: "sponsor",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+      {
+        name: "amount",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+    ],
+    anonymous: false,
+  },
+  {
     type: "error",
     name: "AlreadyParticipant",
     inputs: [],
@@ -797,7 +855,17 @@ export const ContractABI = [
   },
   {
     type: "error",
+    name: "InvalidAmount",
+    inputs: [],
+  },
+  {
+    type: "error",
     name: "InvalidBetAmount",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "InvalidPaymentAsset",
     inputs: [],
   },
   {
@@ -884,6 +952,22 @@ export const ContractABI = [
   },
   {
     type: "error",
+    name: "SafeERC20FailedOperation",
+    inputs: [
+      {
+        name: "token",
+        type: "address",
+        internalType: "address",
+      },
+    ],
+  },
+  {
+    type: "error",
+    name: "TokenTransferFailed",
+    inputs: [],
+  },
+  {
+    type: "error",
     name: "TooFewPlayers",
     inputs: [],
   },
@@ -897,4 +981,4 @@ export const ContractABI = [
     name: "ZeroAddress",
     inputs: [],
   },
-] as const;
+];

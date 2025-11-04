@@ -1,6 +1,6 @@
 import { LitElement, html } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
-import { formatEther } from "viem";
+import { formatEther, formatUnits } from "viem";
 import type { ServerConfig } from "../core/configuration/Config";
 import { getServerConfigFromClient } from "../core/configuration/ConfigLoader";
 import type { ClientInfo, GameConfig, GameInfo } from "../core/Schemas";
@@ -10,11 +10,13 @@ import "./components/baseComponents/Modal";
 import {
   GameStatus,
   getLobbyInfo,
+  isAddressAllowlisted,
   joinLobby as joinLobbyOnchain,
   type LobbyInfo,
 } from "./Contract";
 import { JoinLobbyEvent } from "./Main";
 import { translateText } from "./Utils";
+import { WalletManager } from "./Wallet";
 
 interface TournamentSummary {
   lobbyInfo: LobbyInfo;
@@ -37,6 +39,10 @@ export class JoinPrivateTournamentModal extends LitElement {
   @state() private joining = false;
   @state() private joined = false;
   @state() private waitingRoomClients: ClientInfo[] = [];
+  @state() private allowlistEnabled = false;
+  @state() private allowlistAllowed: boolean | null = null;
+  @state() private allowlistStatusMessage = "";
+  @state() private isWalletConnected = false;
 
   private pollInterval: number | null = null;
   private serverConfig: ServerConfig | null = null;
@@ -80,6 +86,10 @@ export class JoinPrivateTournamentModal extends LitElement {
     this.joining = false;
     this.joined = false;
     this.waitingRoomClients = [];
+    this.allowlistEnabled = false;
+    this.allowlistAllowed = null;
+    this.allowlistStatusMessage = "";
+    this.isWalletConnected = false;
     this.stopWaitingRoomPolling();
   }
 
@@ -147,6 +157,7 @@ export class JoinPrivateTournamentModal extends LitElement {
 
       this.details = { lobbyInfo, gameInfo };
       this.waitingRoomClients = gameInfo.clients ?? [];
+      await this.evaluateAllowlistStatus(lobbyId, lobbyInfo);
     } catch (err: any) {
       console.error("Failed to load tournament details:", err);
       this.error = err?.message ?? "Unable to load tournament details.";
@@ -191,6 +202,17 @@ export class JoinPrivateTournamentModal extends LitElement {
     this.joining = true;
     this.error = "";
     try {
+      if (this.details?.lobbyInfo.allowlistEnabled) {
+        await this.evaluateAllowlistStatus(lobbyId, this.details.lobbyInfo);
+        if (this.allowlistAllowed !== true) {
+          this.joining = false;
+          this.error =
+            this.allowlistStatusMessage ||
+            "Allowlist is enabled for this tournament. Your wallet is not allowlisted.";
+          return;
+        }
+      }
+
       await joinLobbyOnchain({ lobbyId });
 
       this.joined = true;
@@ -356,7 +378,11 @@ export class JoinPrivateTournamentModal extends LitElement {
       },
       {
         label: "Entry Cost",
-        value: `${formatEther(lobbyInfo.betAmount)} ETH`,
+        value: this.formatAmount(lobbyInfo.betAmount, lobbyInfo),
+      },
+      {
+        label: "Allowlist",
+        value: this.formatAllowlistSummary(lobbyInfo),
       },
       {
         label: "Status",
@@ -370,7 +396,7 @@ export class JoinPrivateTournamentModal extends LitElement {
       },
       {
         label: "Prize Pool",
-        value: `${formatEther(lobbyInfo.totalPrize)} ETH`,
+        value: this.formatAmount(lobbyInfo.totalPrize, lobbyInfo),
       },
     ];
 
@@ -390,6 +416,16 @@ export class JoinPrivateTournamentModal extends LitElement {
             ${summaryItems.map((item) =>
               this.renderDetailItem(item.label, item.value),
             )}
+            ${lobbyInfo.allowlistEnabled && this.allowlistStatusMessage
+              ? html`<div
+                  style="margin-top: 8px; font-size: 13px; color: ${this
+                    .allowlistAllowed
+                    ? "#9ccc65"
+                    : "#ffcc80"};"
+                >
+                  ${this.allowlistStatusMessage}
+                </div>`
+              : ""}
           </div>
           ${mapSettings.length
             ? html`<div class="options-section">
@@ -403,6 +439,66 @@ export class JoinPrivateTournamentModal extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private formatAmount(value: bigint, info: LobbyInfo): string {
+    const formatted = info.isNative
+      ? formatEther(value)
+      : formatUnits(value, info.wagerDecimals);
+    return `${formatted} ${info.wagerSymbol}`;
+  }
+
+  private formatAllowlistSummary(lobbyInfo: LobbyInfo): string {
+    if (!lobbyInfo.allowlistEnabled) {
+      return "Disabled";
+    }
+    if (this.allowlistAllowed === true) {
+      return "Enabled (you're allowlisted)";
+    }
+    if (this.allowlistAllowed === false) {
+      return this.isWalletConnected
+        ? "Enabled (wallet not allowlisted)"
+        : "Enabled (connect allowlisted wallet)";
+    }
+    return "Enabled";
+  }
+
+  private async evaluateAllowlistStatus(lobbyId: string, lobbyInfo: LobbyInfo) {
+    this.allowlistEnabled = lobbyInfo.allowlistEnabled;
+
+    if (!lobbyInfo.allowlistEnabled) {
+      this.allowlistAllowed = true;
+      this.allowlistStatusMessage = "";
+      this.isWalletConnected = false;
+      return;
+    }
+
+    const walletManager = WalletManager.getInstance();
+    const connected = !!(walletManager.authenticated && walletManager.address);
+    this.isWalletConnected = connected;
+
+    if (!connected) {
+      this.allowlistAllowed = false;
+      this.allowlistStatusMessage =
+        "Allowlist is enabled. Connect your allowlisted wallet to join.";
+      return;
+    }
+
+    try {
+      const allowed = await isAddressAllowlisted(
+        lobbyId,
+        walletManager.address as `0x${string}`,
+      );
+      this.allowlistAllowed = allowed;
+      this.allowlistStatusMessage = allowed
+        ? "Allowlist is enabled and your wallet is on the list."
+        : "Allowlist is enabled and this wallet is not on the list.";
+    } catch (err: any) {
+      console.error("Failed to check allowlist status:", err);
+      this.allowlistAllowed = false;
+      this.allowlistStatusMessage =
+        err?.message ?? "Unable to verify allowlist status.";
+    }
   }
 
   private get joinStatus(): {
@@ -496,6 +592,19 @@ export class JoinPrivateTournamentModal extends LitElement {
                 </div>
               </div>`
             : ""}
+          ${this.details?.lobbyInfo.allowlistEnabled &&
+          this.allowlistStatusMessage
+            ? html`<div class="join-private-tournament__message">
+                <div
+                  class="message-area ${this.allowlistAllowed === false &&
+                  this.isWalletConnected
+                    ? "error"
+                    : "info"} show"
+                >
+                  ${this.allowlistStatusMessage}
+                </div>
+              </div>`
+            : ""}
           ${this.renderDetails()}
           ${this.details && !this.joined
             ? html`<div class="join-private-tournament__button-row">
@@ -504,7 +613,9 @@ export class JoinPrivateTournamentModal extends LitElement {
                     ? "Joining…"
                     : translateText("private_lobby.join_lobby")}
                   block
-                  ?disabled=${this.joining}
+                  ?disabled=${this.joining ||
+                  (this.details?.lobbyInfo.allowlistEnabled &&
+                    this.allowlistAllowed !== true)}
                   @click=${this.joinTournament}
                   style="width: 100%; max-width: 320px;"
                 ></o-button>

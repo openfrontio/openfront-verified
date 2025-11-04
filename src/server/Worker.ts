@@ -23,8 +23,13 @@ import { GameManager } from "./GameManager";
 import { getUserMe, verifyClientToken } from "./jwt";
 import { logger } from "./Logger";
 
-import { verifyMessage } from "viem";
-import { getConfiguredGameServer, getDerivedServerAddress } from "./Onchain";
+import { verifyMessage, type Address } from "viem";
+import {
+  getConfiguredGameServer,
+  getDerivedServerAddress,
+  getLobbyInfo,
+  isAddressAllowlistedOnChain,
+} from "./Onchain";
 import { PrivilegeRefresher } from "./PrivilegeRefresher";
 import {
   getLinkedAddress,
@@ -134,6 +139,26 @@ export async function startWorker() {
     const result = await verifyClientToken(token, config);
     if (result === false) return null;
     return result.persistentId;
+  }
+
+  async function fetchLobbyInfoWithRetry(gameID: string, retries = 12) {
+    for (let attempt = 0; attempt < retries; attempt += 1) {
+      try {
+        const info = await getLobbyInfo(gameID);
+        if (info) {
+          return info;
+        }
+      } catch (error) {
+        log.warn("getLobbyInfo failed", {
+          gameID,
+          attempt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      const delay = Math.min(500 * (attempt + 1), 4000);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    return null;
   }
 
   // Wallet linking endpoints
@@ -457,6 +482,60 @@ export async function startWorker() {
               ws.close(1002, "Forbidden");
               return;
             }
+          }
+        }
+
+        const linkedAddress = await getLinkedAddress(persistentId);
+
+        const lobbyInfo = await fetchLobbyInfoWithRetry(clientMsg.gameID);
+        if (!lobbyInfo) {
+          log.warn(
+            "Unable to verify lobby on-chain after retries; allowing connection",
+            {
+              gameID: clientMsg.gameID,
+              clientID: clientMsg.clientID,
+            },
+          );
+        }
+
+        if (!linkedAddress) {
+          log.warn("Join blocked: wallet not linked", {
+            gameID: clientMsg.gameID,
+            clientID: clientMsg.clientID,
+          });
+          ws.close(1002, "WalletNotLinked");
+          return;
+        }
+
+        if (lobbyInfo) {
+          const joinedOnChain = lobbyInfo.participants.some(
+            (addr) => addr.toLowerCase() === linkedAddress.toLowerCase(),
+          );
+
+          if (!joinedOnChain) {
+            if (lobbyInfo.allowlistEnabled) {
+              const allowlisted = await isAddressAllowlistedOnChain(
+                clientMsg.gameID,
+                linkedAddress as Address,
+              );
+              if (!allowlisted) {
+                log.warn("Join blocked: wallet not allowlisted", {
+                  gameID: clientMsg.gameID,
+                  clientID: clientMsg.clientID,
+                  wallet: linkedAddress,
+                });
+                ws.close(1002, "NotAllowlisted");
+                return;
+              }
+            }
+
+            log.warn("Join blocked: wallet has not joined on-chain", {
+              gameID: clientMsg.gameID,
+              clientID: clientMsg.clientID,
+              wallet: linkedAddress,
+            });
+            ws.close(1002, "NotJoinedOnChain");
+            return;
           }
         }
 

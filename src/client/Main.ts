@@ -25,6 +25,8 @@ import { LangSelector } from "./LangSelector";
 import { LanguageModal } from "./LanguageModal";
 import { NewsModal } from "./NewsModal";
 import "./OpenGamesModal";
+import "./SponsorTournamentModal";
+import { SponsorTournamentModal } from "./SponsorTournamentModal";
 import { TerritoryPatternsModal } from "./TerritoryPatternsModal";
 import { TokenLoginModal } from "./TokenLoginModal";
 import { SendKickPlayerIntentEvent } from "./Transport";
@@ -99,6 +101,7 @@ class Client {
   private userSettings: UserSettings = new UserSettings();
   private patternsModal: TerritoryPatternsModal;
   private privateTournamentModal: JoinPrivateTournamentModal | null = null;
+  private sponsorTournamentModal: SponsorTournamentModal | null = null;
   private tokenLoginModal: TokenLoginModal;
 
   private gutterAds: GutterAds;
@@ -251,6 +254,10 @@ class Client {
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     this.privateTournamentModal instanceof JoinPrivateTournamentModal;
 
+    this.sponsorTournamentModal = document.querySelector(
+      "sponsor-tournament-modal",
+    ) as SponsorTournamentModal;
+
     const onUserMe = async (userMeResponse: UserMeResponse | false) => {
       document.dispatchEvent(
         new CustomEvent("userMeResponse", {
@@ -324,6 +331,19 @@ class Client {
         this.privateTournamentModal?.open();
       }
     });
+
+    const sponsorTournamentButton = document.getElementById(
+      "sponsor-tournament-button",
+    );
+    if (!sponsorTournamentButton) {
+      console.warn("Missing sponsor-tournament-button");
+    } else {
+      sponsorTournamentButton.addEventListener("click", () => {
+        if (this.usernameInput?.isValid()) {
+          this.sponsorTournamentModal?.open();
+        }
+      });
+    }
 
     if (this.userSettings.darkMode()) {
       document.documentElement.classList.add("dark");

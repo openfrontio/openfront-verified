@@ -981,4 +981,4 @@ export const CONTRACT_ABI = [
     name: "ZeroAddress",
     inputs: [],
   },
-] as const;
+];

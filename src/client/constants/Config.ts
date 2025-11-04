@@ -14,7 +14,7 @@ function resolveEnv(key: string): string | undefined {
 export const CONTRACT_ADDRESS = (
   typeof process !== "undefined" && process.env?.CONTRACT_ADDRESS
     ? (process.env.CONTRACT_ADDRESS as `0x${string}`)
-    : "0xec3e6c3146FB0aFd4469c766264875016e9AaB06"
+    : "0x89F80517908556a9C1D165fe34bD6DbCD91D0762"
 ) as `0x${string}`;
 
 export const FAKE_USD_TOKEN_ADDRESS = (

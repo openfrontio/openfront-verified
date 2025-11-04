@@ -3,7 +3,7 @@
 ## Code
 
 OpenFront is licensed under AGPL-3.0.  
-See [Contributors](https://github.com/openfrontio/OpenFrontIO/graphs/contributors) for code contributors.
+See [Contributors](https://github.com/openfrontio/openfront-verified/graphs/contributors) for code contributors.
 
 ## Map Data
 

@@ -1,18 +1,10 @@
-import { LitElement, TemplateResult, html } from "lit";
+import { LitElement, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
-import { isInIframe, translateText } from "../../../client/Utils";
-import { ColorPalette, Pattern } from "../../../core/CosmeticSchemas";
+import { translateText } from "../../../client/Utils";
 import { EventBus } from "../../../core/EventBus";
 import { GameUpdateType } from "../../../core/game/GameUpdates";
 import { GameView } from "../../../core/game/GameView";
-import "../../components/PatternButton";
 import { GameStatus, claimPrize, getLobbyInfo } from "../../Contract";
-import {
-  fetchCosmetics,
-  handlePurchase,
-  patternRelationship,
-} from "../../Cosmetics";
-import { getUserMe } from "../../jwt";
 import { SendWinnerEvent } from "../../Transport";
 import { WalletManager } from "../../Wallet";
 import { Layer } from "./Layer";
@@ -32,9 +24,6 @@ export class WinModal extends LitElement implements Layer {
 
   @state()
   private isWin = false;
-
-  @state()
-  private patternContent: TemplateResult | null = null;
 
   @state()
   private showClaimButton: boolean = false;
@@ -123,14 +112,18 @@ export class WinModal extends LitElement implements Layer {
           >
             ${translateText("win_modal.exit")}
           </button>
-          <button
-            @click=${this.hide}
-            class="flex-1 px-3 py-3 text-base cursor-pointer bg-blue-500/60 text-white border-0 rounded transition-all duration-200 hover:bg-blue-500/80 hover:-translate-y-px active:translate-y-px"
-          >
-            ${this.isWin
-              ? translateText("win_modal.keep")
-              : translateText("win_modal.spectate")}
-          </button>
+          ${this.showClaimButton
+            ? html`
+                <button
+                  @click=${this.hide}
+                  class="flex-1 px-3 py-3 text-base cursor-pointer bg-blue-500/60 text-white border-0 rounded transition-all duration-200 hover:bg-blue-500/80 hover:-translate-y-px active:translate-y-px"
+                >
+                  ${this.isWin
+                    ? translateText("win_modal.keep")
+                    : translateText("win_modal.spectate")}
+                </button>
+              `
+            : html``}
         </div>
         ${this.claimMsg
           ? html`<div
@@ -163,81 +156,7 @@ export class WinModal extends LitElement implements Layer {
   }
 
   innerHtml() {
-    if (isInIframe() || this.rand < 0.25) {
-      return this.steamWishlist();
-    }
-    return this.renderPatternButton();
-  }
-
-  renderPatternButton() {
-    return html`
-      <div class="text-center mb-6 bg-black/30 p-2.5 rounded">
-        <h3 class="text-xl font-semibold text-white mb-3">
-          ${translateText("win_modal.support_openfront")}
-        </h3>
-        <p class="text-white mb-3">
-          ${translateText("win_modal.territory_pattern")}
-        </p>
-        <div class="flex justify-center">${this.patternContent}</div>
-      </div>
-    `;
-  }
-
-  async loadPatternContent() {
-    const me = await getUserMe();
-    const patterns = await fetchCosmetics();
-
-    const purchasablePatterns: {
-      pattern: Pattern;
-      colorPalette: ColorPalette;
-    }[] = [];
-
-    for (const pattern of Object.values(patterns?.patterns ?? {})) {
-      for (const colorPalette of pattern.colorPalettes ?? []) {
-        if (
-          patternRelationship(pattern, colorPalette, me, null) === "purchasable"
-        ) {
-          const palette = patterns?.colorPalettes?.[colorPalette.name];
-          if (palette) {
-            purchasablePatterns.push({
-              pattern,
-              colorPalette: palette,
-            });
-          }
-        }
-      }
-    }
-
-    if (purchasablePatterns.length === 0) {
-      this.patternContent = html``;
-      return;
-    }
-
-    // Shuffle the array and take patterns based on screen size
-    const shuffled = [...purchasablePatterns].sort(() => Math.random() - 0.5);
-    const isMobile = window.innerWidth < 768; // md breakpoint
-    const maxPatterns = isMobile ? 1 : 3;
-    const selectedPatterns = shuffled.slice(
-      0,
-      Math.min(maxPatterns, shuffled.length),
-    );
-
-    this.patternContent = html`
-      <div class="flex gap-4 flex-wrap justify-start">
-        ${selectedPatterns.map(
-          ({ pattern, colorPalette }) => html`
-            <pattern-button
-              .pattern=${pattern}
-              .colorPalette=${colorPalette}
-              .requiresPurchase=${true}
-              .onSelect=${(p: Pattern | null) => {}}
-              .onPurchase=${(p: Pattern, colorPalette: ColorPalette | null) =>
-                handlePurchase(p, colorPalette)}
-            ></pattern-button>
-          `,
-        )}
-      </div>
-    `;
+    return html``;
   }
 
   steamWishlist(): TemplateResult {

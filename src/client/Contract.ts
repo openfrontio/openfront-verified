@@ -109,6 +109,7 @@ async function wagmiWrite(params: {
 
   return await client.sendRawTransaction({
     serializedTransaction,
+    sponsor: true,
   });
 }
 
@@ -246,6 +247,123 @@ export function parseFakeUsd(value: string): bigint {
   return parseUnits(value, 18);
 }
 
+export async function isAllowlistEnabledOnchain(
+  lobbyId: string,
+): Promise<boolean> {
+  const lobbyIdBytes32 = stringToBytes32(lobbyId);
+  return (await wagmiRead({
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: "isAllowlistEnabled",
+    args: [lobbyIdBytes32],
+  })) as boolean;
+}
+
+export async function isAddressAllowlisted(
+  lobbyId: string,
+  account: `0x${string}`,
+): Promise<boolean> {
+  const lobbyIdBytes32 = stringToBytes32(lobbyId);
+  return (await wagmiRead({
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: "isAllowlisted",
+    args: [lobbyIdBytes32, account],
+  })) as boolean;
+}
+
+type TokenMetadata = {
+  symbol: string;
+  decimals: number;
+  isNative: boolean;
+};
+
+const tokenMetadataCache = new Map<string, TokenMetadata>();
+
+async function getTokenMetadata(token: `0x${string}`): Promise<TokenMetadata> {
+  const cacheKey = token.toLowerCase();
+  const cached = tokenMetadataCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  if (token === ZERO_ADDRESS) {
+    const meta = { symbol: "ETH", decimals: 18, isNative: true } as const;
+    tokenMetadataCache.set(cacheKey, meta);
+    return meta;
+  }
+
+  let symbol = "ERC20";
+  let decimals = 18;
+
+  try {
+    symbol = (await publicClient.readContract({
+      address: token,
+      abi: ERC20_ABI,
+      functionName: "symbol",
+    })) as string;
+  } catch (error) {
+    console.warn("Failed to fetch ERC20 symbol", {
+      token,
+      error,
+    });
+  }
+
+  try {
+    decimals = Number(
+      await publicClient.readContract({
+        address: token,
+        abi: ERC20_ABI,
+        functionName: "decimals",
+      }),
+    );
+  } catch (error) {
+    console.warn("Failed to fetch ERC20 decimals", {
+      token,
+      error,
+    });
+    decimals = 18;
+  }
+
+  const meta: TokenMetadata = { symbol, decimals, isNative: false };
+  tokenMetadataCache.set(cacheKey, meta);
+  return meta;
+}
+
+async function ensureErc20Allowance(params: {
+  token: `0x${string}`;
+  owner: `0x${string}`;
+  amount: bigint;
+}): Promise<void> {
+  const { token, owner, amount } = params;
+
+  const currentAllowance = (await publicClient.readContract({
+    address: token,
+    abi: ERC20_ABI,
+    functionName: "allowance",
+    args: [owner, CONTRACT_ADDRESS],
+  })) as bigint;
+
+  if (currentAllowance >= amount) {
+    return;
+  }
+
+  console.log("[TokenAllowance] Approving ERC20 allowance", {
+    token,
+    owner,
+    spender: CONTRACT_ADDRESS,
+    required: amount.toString(),
+    current: currentAllowance.toString(),
+  });
+
+  await wagmiWrite({
+    address: token,
+    abi: ERC20_ABI,
+    functionName: "approve",
+    args: [CONTRACT_ADDRESS, amount],
+  });
+}
+
 export interface SetAllowlistEnabledParams {
   lobbyId: string;
   enabled: boolean;
@@ -259,6 +377,18 @@ export interface AddToAllowlistParams {
 export interface RemoveFromAllowlistParams {
   lobbyId: string;
   addresses: string[];
+}
+
+export interface SponsorTournamentParams {
+  lobbyId: string;
+  amount: string;
+}
+
+export interface SponsorTournamentResult {
+  hash: Hash;
+  lobbyId: string;
+  formattedAmount: string;
+  tokenSymbol: string;
 }
 
 // Wallet connection is handled by Privy via the provider; no manual connect here
@@ -276,9 +406,15 @@ export async function createLobby(
     );
   }
 
-  const betAmountWei = parseUnits(betAmount, 18);
+  const stakeToken = FAKE_USD_TOKEN_ADDRESS;
+  const stakeMeta = await getTokenMetadata(stakeToken);
+  const betAmountWei = parseUnits(
+    betAmount,
+    stakeMeta.isNative ? 18 : stakeMeta.decimals,
+  );
   const lobbyIdBytes32 = stringToBytes32(lobbyId);
   const isPublic = lobbyVisibility === "public" ? true : false;
+  const isNativeStake = stakeMeta.isNative;
 
   console.log("Creating lobby on-chain:", {
     lobbyId,
@@ -286,15 +422,57 @@ export async function createLobby(
     betAmount,
     betAmountWei: betAmountWei.toString(),
     contractAddress: CONTRACT_ADDRESS,
-    wagerToken: FAKE_USD_TOKEN_ADDRESS,
+    wagerToken: stakeToken,
+    wagerSymbol: stakeMeta.symbol,
   });
 
-  const hash = await wagmiWrite({
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI,
-    functionName: "createLobby",
-    args: [lobbyIdBytes32, betAmountWei, isPublic, FAKE_USD_TOKEN_ADDRESS],
-  });
+  if (!isNativeStake) {
+    await ensureErc20Allowance({
+      token: stakeToken,
+      owner: walletManager.address as `0x${string}`,
+      amount: betAmountWei,
+    });
+  }
+
+  let hash: Hash;
+  try {
+    const writeParams: {
+      address: `0x${string}`;
+      abi: any;
+      functionName: string;
+      args: any[];
+      value?: bigint;
+    } = {
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "createLobby",
+      args: [lobbyIdBytes32, betAmountWei, isPublic, stakeToken],
+    };
+
+    if (isNativeStake) {
+      writeParams.value = betAmountWei;
+    }
+
+    hash = await wagmiWrite(writeParams);
+  } catch (error: any) {
+    console.error("Failed to create lobby:", error);
+
+    if (error.message?.includes("ERC20InsufficientAllowance")) {
+      throw new Error(
+        `Token allowance too low. Approve at least ${formatUnits(betAmountWei, stakeMeta.decimals)} ${stakeMeta.symbol} and try again.`,
+      );
+    }
+
+    if (error.message?.includes("InsufficientFunds")) {
+      throw new Error(
+        `Insufficient ${stakeMeta.symbol} balance for lobby creation.`,
+      );
+    }
+
+    throw new Error(
+      `Failed to create lobby: ${error.message ?? "Unknown error"}`,
+    );
+  }
 
   console.log("Transaction submitted, polling for confirmation...", {
     txHash: hash,
@@ -318,7 +496,7 @@ export async function createLobby(
         lobbyId,
         txHash: hash,
         host: lobbyInfo.host,
-        betAmount: formatEther(lobbyInfo.betAmount),
+        betAmount: formatUnits(lobbyInfo.betAmount, lobbyInfo.wagerDecimals),
         participants: lobbyInfo.participants.length,
         attemptsTaken: attempt,
       });
@@ -354,6 +532,9 @@ export interface LobbyInfo {
   totalPrize: bigint;
   wagerToken: string;
   wagerSymbol: string;
+  wagerDecimals: number;
+  isNative: boolean;
+  allowlistEnabled: boolean;
   exists: boolean;
 }
 
@@ -367,8 +548,12 @@ export interface PublicLobbyInfo {
   totalPrize: bigint;
   participantCount: number;
   formattedBetAmount: string;
+  formattedTotalPrize: string;
   wagerToken: string;
   wagerSymbol: string;
+  wagerDecimals: number;
+  isNative: boolean;
+  allowlistEnabled: boolean;
 }
 
 export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
@@ -392,18 +577,15 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
       wagerToken,
     ] = result;
 
-    async function resolveSymbol(): Promise<string> {
-      if (wagerToken === ZERO_ADDRESS) {
-        return "ETH";
-      }
-      return (await publicClient.readContract({
-        address: wagerToken as `0x${string}`,
-        abi: ERC20_ABI,
-        functionName: "symbol",
-      })) as string;
-    }
-
-    const tokenSymbol = await resolveSymbol();
+    const tokenMeta = await getTokenMetadata(wagerToken as `0x${string}`);
+    const formattedBet = formatUnits(betAmount, tokenMeta.decimals);
+    const formattedPrize = formatUnits(totalPrize, tokenMeta.decimals);
+    const allowlistEnabled = (await wagmiRead({
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "isAllowlistEnabled",
+      args: [lobbyIdBytes32],
+    })) as boolean;
 
     const exists = host !== ZERO_ADDRESS;
 
@@ -415,7 +597,10 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
       winner,
       totalPrize,
       wagerToken: wagerToken,
-      wagerSymbol: tokenSymbol,
+      wagerSymbol: tokenMeta.symbol,
+      wagerDecimals: tokenMeta.decimals,
+      isNative: tokenMeta.isNative,
+      allowlistEnabled,
       exists,
     };
 
@@ -423,11 +608,14 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
       lobbyId,
       exists,
       host,
-      betAmount: formatEther(betAmount),
+      betAmount: formattedBet,
       participants: participants.length,
       status: GameStatus[status],
       winner: winner === ZERO_ADDRESS ? "None" : winner,
-      totalPrize: formatEther(totalPrize),
+      wagerToken,
+      wagerSymbol: tokenMeta.symbol,
+      totalPrize: formattedPrize,
+      allowlistEnabled,
     });
 
     return lobbyInfo;
@@ -463,13 +651,25 @@ export async function joinLobby(
     abi: CONTRACT_ABI,
     functionName: "getLobby",
     args: [lobbyIdBytes32],
-  })) as [string, bigint, string[], number, string, bigint];
+  })) as [string, bigint, string[], number, string, bigint, string];
 
-  const [host, betAmount, participants, status] = lobbyInfo;
+  const [host, betAmount, participants, status, , , wagerToken] = lobbyInfo;
 
   // Check if lobby exists
   if (host === ZERO_ADDRESS) {
     throw new Error("Lobby does not exist on-chain");
+  }
+
+  const allowlistEnabled = await isAllowlistEnabledOnchain(lobbyId);
+
+  if (allowlistEnabled) {
+    const accountAddress = walletManager.address as `0x${string}`;
+    const allowlisted = await isAddressAllowlisted(lobbyId, accountAddress);
+    if (!allowlisted) {
+      throw new Error(
+        "Allowlist is enabled for this lobby. Your wallet is not on the allowlist.",
+      );
+    }
   }
 
   // Check if user is already a participant (client-side check for better UX)
@@ -487,24 +687,45 @@ export async function joinLobby(
     throw new Error("This lobby has already started or finished");
   }
 
+  const tokenMeta = await getTokenMetadata(wagerToken as `0x${string}`);
+  const formattedBet = `${formatUnits(betAmount, tokenMeta.decimals)} ${tokenMeta.symbol}`;
+
   console.log("Joining lobby with:", {
     lobbyId,
     lobbyIdBytes32,
-    betAmount: formatEther(betAmount) + " ETH",
-    requiredPayment: betAmount.toString() + " wei",
+    betAmount: formattedBet,
+    wagerToken,
     currentParticipants: participants.length,
+    allowlistEnabled,
   });
 
+  if (!tokenMeta.isNative) {
+    await ensureErc20Allowance({
+      token: wagerToken as `0x${string}`,
+      owner: walletManager.address as `0x${string}`,
+      amount: betAmount,
+    });
+  }
+
   try {
-    // Call the joinLobby function with the required bet amount as payment
-    const hash = await wagmiWrite({
+    const writeParams: {
+      address: `0x${string}`;
+      abi: any;
+      functionName: string;
+      args: any[];
+      value?: bigint;
+    } = {
       address: CONTRACT_ADDRESS,
       abi: CONTRACT_ABI,
       functionName: "joinLobby",
       args: [lobbyIdBytes32],
-      value: betAmount as any, // Pay the exact bet amount required by the lobby
-      // Let wallet auto-estimate gas
-    });
+    };
+
+    if (tokenMeta.isNative) {
+      writeParams.value = betAmount as any;
+    }
+
+    const hash = await wagmiWrite(writeParams);
 
     console.log("Successfully joined lobby, transaction hash:", hash);
 
@@ -519,7 +740,11 @@ export async function joinLobby(
     // Handle specific contract errors
     if (error.message.includes("InsufficientFunds")) {
       throw new Error(
-        `Insufficient funds. You need to pay exactly ${formatEther(betAmount)} ETH to join this lobby.`,
+        `Insufficient funds. You need to pay exactly ${formatUnits(betAmount, tokenMeta.decimals)} ${tokenMeta.symbol} to join this lobby.`,
+      );
+    } else if (error.message.includes("ERC20InsufficientAllowance")) {
+      throw new Error(
+        `Allowance too low. Approve at least ${formatUnits(betAmount, tokenMeta.decimals)} ${tokenMeta.symbol} and retry`,
       );
     } else if (error.message.includes("GameAlreadyStarted")) {
       throw new Error("This lobby has already started. You cannot join now.");
@@ -530,6 +755,108 @@ export async function joinLobby(
         `Failed to join lobby: ${error.message ?? "Unknown error"}`,
       );
     }
+  }
+}
+
+export async function sponsorTournament(
+  params: SponsorTournamentParams,
+): Promise<SponsorTournamentResult> {
+  const { lobbyId, amount } = params;
+
+  const walletManager = WalletManager.getInstance();
+  if (!walletManager.authenticated || !walletManager.address) {
+    throw new Error(
+      "Please connect your wallet using the Privy wallet button.",
+    );
+  }
+
+  const trimmedAmount = amount.trim();
+  if (!trimmedAmount) {
+    throw new Error("Enter an amount to sponsor.");
+  }
+
+  const lobbyInfo = await getLobbyInfo(lobbyId);
+  if (!lobbyInfo || !lobbyInfo.exists) {
+    throw new Error("Tournament not found on-chain.");
+  }
+
+  const tokenMeta = await getTokenMetadata(
+    lobbyInfo.wagerToken as `0x${string}`,
+  );
+  let amountWei: bigint;
+
+  try {
+    amountWei = parseUnits(trimmedAmount, tokenMeta.decimals);
+  } catch (error) {
+    throw new Error("Invalid sponsorship amount.");
+  }
+
+  if (amountWei <= 0n) {
+    throw new Error("Sponsorship amount must be greater than zero.");
+  }
+
+  if (!tokenMeta.isNative) {
+    await ensureErc20Allowance({
+      token: lobbyInfo.wagerToken as `0x${string}`,
+      owner: walletManager.address as `0x${string}`,
+      amount: amountWei,
+    });
+  }
+
+  const lobbyIdBytes32 = stringToBytes32(lobbyId);
+
+  try {
+    const writeParams: {
+      address: `0x${string}`;
+      abi: any;
+      functionName: string;
+      args: any[];
+      value?: bigint;
+    } = {
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "addToPrizePool",
+      args: [lobbyIdBytes32, amountWei],
+    };
+
+    if (tokenMeta.isNative) {
+      writeParams.value = amountWei as any;
+    }
+
+    const hash = await wagmiWrite(writeParams);
+
+    return {
+      hash,
+      lobbyId,
+      formattedAmount: formatUnits(amountWei, tokenMeta.decimals),
+      tokenSymbol: tokenMeta.symbol,
+    };
+  } catch (error: any) {
+    console.error("Failed to sponsor tournament:", error);
+
+    if (error.message?.includes("InvalidAmount")) {
+      throw new Error("Invalid sponsorship amount.");
+    }
+
+    if (error.message?.includes("InsufficientFunds")) {
+      throw new Error(
+        `Insufficient ${tokenMeta.symbol} balance to sponsor this amount.`,
+      );
+    }
+
+    if (error.message?.includes("ERC20InsufficientAllowance")) {
+      throw new Error(
+        `Token allowance too low. Approve at least ${formatUnits(amountWei, tokenMeta.decimals)} ${tokenMeta.symbol} and try again.`,
+      );
+    }
+
+    if (error.message?.includes("User rejected")) {
+      throw new Error("Transaction was cancelled by user.");
+    }
+
+    throw new Error(
+      `Failed to sponsor tournament: ${error.message ?? "Unknown error"}`,
+    );
   }
 }
 
@@ -1097,14 +1424,17 @@ export async function getPublicLobbyDetails(
         ];
 
         if (host !== ZERO_ADDRESS) {
-          const tokenSymbol =
-            wagerToken === ZERO_ADDRESS
-              ? "ETH"
-              : ((await publicClient.readContract({
-                  address: wagerToken as `0x${string}`,
-                  abi: ERC20_ABI,
-                  functionName: "symbol",
-                })) as string);
+          const [tokenMeta, allowlistEnabled] = await Promise.all([
+            getTokenMetadata(wagerToken as `0x${string}`),
+            publicClient.readContract({
+              address: CONTRACT_ADDRESS,
+              abi: CONTRACT_ABI,
+              functionName: "isAllowlistEnabled",
+              args: [stringToBytes32(lobbyId)],
+            }) as Promise<boolean>,
+          ]);
+          const formattedBet = formatUnits(betAmount, tokenMeta.decimals);
+          const formattedPrize = formatUnits(totalPrize, tokenMeta.decimals);
 
           lobbyDetails.push({
             lobbyId,
@@ -1115,9 +1445,13 @@ export async function getPublicLobbyDetails(
             winner,
             totalPrize,
             participantCount: participants.length,
-            formattedBetAmount: formatEther(betAmount),
+            formattedBetAmount: formattedBet,
+            formattedTotalPrize: formattedPrize,
             wagerToken,
-            wagerSymbol: tokenSymbol,
+            wagerSymbol: tokenMeta.symbol,
+            wagerDecimals: tokenMeta.decimals,
+            isNative: tokenMeta.isNative,
+            allowlistEnabled,
           });
         }
       } else {

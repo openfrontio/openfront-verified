@@ -10,9 +10,9 @@
 
 This is a fork/rewrite of WarFront.io. Credit to https://github.com/WarFrontIO.
 
-![CI](https://github.com/openfrontio/OpenFrontIO/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/openfrontio/openfront-verified/actions/workflows/ci.yml/badge.svg)
 [![Crowdin](https://badges.crowdin.net/openfront-mls/localized.svg)](https://crowdin.com/project/openfront-mls)
-[![CLA assistant](https://cla-assistant.io/readme/badge/openfrontio/OpenFrontIO)](https://cla-assistant.io/openfrontio/OpenFrontIO)
+[![CLA assistant](https://cla-assistant.io/readme/badge/openfrontio/openfront-verified)](https://cla-assistant.io/openfrontio/openfront-verified)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Assets: CC BY-SA 4.0](https://img.shields.io/badge/Assets-CC%20BY--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
 
@@ -34,7 +34,7 @@ This is a fork/rewrite of WarFront.io. Credit to https://github.com/WarFrontIO.
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/openfrontio/OpenFrontIO.git
+   git clone https://github.com/openfrontio/openfront-verified.git
    cd OpenFrontIO
    ```
 
@@ -161,7 +161,6 @@ How to help?
 To ensure code quality and project stability, we use a progressive contribution system:
 
 1. **New Contributors**: Limited to UI improvements and small bug fixes only
-
    - This helps you become familiar with the codebase
    - UI changes are easier to review and less likely to break core functionality
    - Small, focused PRs have a higher chance of being accepted
@@ -173,20 +172,17 @@ To ensure code quality and project stability, we use a progressive contribution 
 ### How to Contribute Successfully
 
 1. **Before Starting Work**:
-
    - Open an issue describing what you want to contribute
    - Wait for maintainer feedback before investing significant time
    - Small improvements can proceed directly to PR stage
 
 2. **Code Quality Requirements**:
-
    - All code must be well-commented and follow existing style patterns
    - New features should not break existing functionality
    - Code should be thoroughly tested before submission
    - All code changes in src/core _MUST_ be tested.
 
 3. **Pull Request Process**:
-
    - Keep PRs focused on a single feature or bug fix
    - Include screenshots for UI changes
    - Describe what testing you've performed

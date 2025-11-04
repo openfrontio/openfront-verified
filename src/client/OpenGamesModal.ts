@@ -134,6 +134,30 @@ export class OpenGamesModal extends LitElement {
     }
   }
 
+  private formatAmountDisplay(amount: string, symbol: string): string {
+    const numeric = Number(amount);
+    if (!Number.isFinite(numeric)) {
+      return `${amount} ${symbol}`;
+    }
+
+    const absValue = Math.abs(numeric);
+    let formatted: string;
+
+    if (absValue === 0) {
+      formatted = "0";
+    } else if (absValue >= 1) {
+      formatted = numeric.toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 4,
+      });
+    } else {
+      formatted = numeric.toPrecision(4);
+    }
+
+    formatted = formatted.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+    return `${formatted} ${symbol}`;
+  }
+
   private async pollWaitingRoomParticipants() {
     if (!this.joinedLobbyId) return;
 
@@ -358,10 +382,15 @@ export class OpenGamesModal extends LitElement {
                 ${this.lobbies.map((l) => {
                   const isJoining = this.joiningLobbyId === l.lobbyId;
                   const isJoined = this.joinedLobbyId === l.lobbyId;
-                  const prizePool = (
-                    parseFloat(l.formattedBetAmount) * l.participantCount
-                  ).toFixed(4);
                   const hostShort = `${l.host.slice(0, 6)}...${l.host.slice(-4)}`;
+                  const entryDisplay = this.formatAmountDisplay(
+                    l.formattedBetAmount,
+                    l.wagerSymbol,
+                  );
+                  const prizePoolDisplay = this.formatAmountDisplay(
+                    l.formattedTotalPrize,
+                    l.wagerSymbol,
+                  );
 
                   return html` <div
                     class="option-card"
@@ -478,7 +507,7 @@ export class OpenGamesModal extends LitElement {
                         <div
                           style="color:#fff; font-size:14px; font-weight:600;"
                         >
-                          ${l.formattedBetAmount} ETH
+                          ${entryDisplay}
                         </div>
                       </div>
 
@@ -494,7 +523,7 @@ export class OpenGamesModal extends LitElement {
                         <div
                           style="color:#ffd700; font-size:14px; font-weight:600;"
                         >
-                          ${prizePool} ETH
+                          ${prizePoolDisplay}
                         </div>
                       </div>
                     </div>
@@ -570,7 +599,10 @@ export class OpenGamesModal extends LitElement {
                   <div style="color:#aaa; font-size:14px;">
                     Bet Amount:
                     <span style="color:#fff;"
-                      >${lobby.formattedBetAmount} ETH</span
+                      >${this.formatAmountDisplay(
+                        lobby.formattedBetAmount,
+                        lobby.wagerSymbol,
+                      )}</span
                     >
                   </div>
                 `

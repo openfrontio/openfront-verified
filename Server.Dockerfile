@@ -20,7 +20,7 @@ ENV HUSKY=0
 ENV NPM_CONFIG_IGNORE_SCRIPTS=1
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Stage 3: Build TypeScript (if needed for server)
 FROM base AS build
