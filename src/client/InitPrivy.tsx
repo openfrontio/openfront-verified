@@ -1,5 +1,5 @@
 import { useSignMessage, useWallets } from "@privy-io/react-auth";
-import { useMemo } from "react";
+import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { WalletButtonPortal } from "./components/WalletButtonPortal";
 import "./components/WalletConnect.css";
@@ -65,7 +65,8 @@ export function initializePrivy() {
   function Bridge() {
     const { wallets } = useWallets();
     const { signMessage } = useSignMessage();
-    useMemo(() => {
+
+    useEffect(() => {
       window.privySignMessage = async (message: string, addr?: string) => {
         const address = addr ?? wallets[0]?.address;
         const { signature } = await signMessage({ message }, {

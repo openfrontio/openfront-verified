@@ -22,7 +22,11 @@ import "./components/baseComponents/Modal";
 import "./components/Difficulties";
 import "./components/Maps";
 import {
+  addToAllowlist as addToAllowlistOnchain,
+  cancelLobby as cancelLobbyOnchain,
   createLobby as createLobbyOnchain,
+  removeFromAllowlist as removeFromAllowlistOnchain,
+  setAllowlistEnabled as setAllowlistEnabledOnchain,
   startGame as startGameOnchain,
 } from "./Contract";
 import { JoinLobbyEvent } from "./Main";
@@ -56,10 +60,17 @@ export class CreateTournamentModal extends LitElement {
   @state() private lobbyCreatorClientID: string = "";
   @state() private lobbyIdVisible: boolean = true;
   @state() private betAmount: string = "0.001";
+  @state() private useWagerToken: boolean = true;
   @state() private lobbyVisibility: "private" | "public" = "public";
   @state() private ethPriceUSD: number | null = null;
   @state() private isCreating: boolean = false;
   @state() private creationSuccess: boolean = false;
+  @state() private allowlistEnabled: boolean = false;
+  @state() private allowlistInput: string = "";
+  @state() private currentAllowlist: string[] = [];
+  @state() private isUpdatingAllowlist: boolean = false;
+  @state() private allowlistStatusMessage: string = "";
+  @state() private isCancelling: boolean = false;
 
   private playersInterval: NodeJS.Timeout | null = null;
   // Add a new timer for debouncing bot changes
@@ -283,7 +294,7 @@ export class CreateTournamentModal extends LitElement {
                       type="text"
                       inputmode="decimal"
                       autocomplete="off"
-                      placeholder="0.001"
+                      placeholder=${this.useWagerToken ? "100" : "0.001"}
                       .value=${this.betAmount}
                       ?disabled=${!!this.lobbyId}
                       @input=${(e: Event) => {
@@ -303,16 +314,20 @@ export class CreateTournamentModal extends LitElement {
                         text-align: right;
                       "
                     />
-                    <span style="color:#fff; opacity:0.9; font-size:18px; font-weight:600;">ETH</span>
+                    <span style="color:#fff; opacity:0.9; font-size:18px; font-weight:600;">
+                      ${this.useWagerToken ? "fUSD" : "ETH"}
+                    </span>
                   </div>
                   ${
-                    this.getUSDValue()
-                      ? html`
-                          <div style="color:#888; font-size:14px;">
+                    this.useWagerToken
+                      ? html`<div style="color:#888; font-size:14px;">
+                          Fake USD (1:1)
+                        </div>`
+                      : this.getUSDValue()
+                        ? html`<div style="color:#888; font-size:14px;">
                             ≈ $${this.getUSDValue()} USD
-                          </div>
-                        `
-                      : ""
+                          </div>`
+                        : ""
                   }
                 </div>
 
@@ -323,34 +338,53 @@ export class CreateTournamentModal extends LitElement {
                         <div
                           style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap;"
                         >
-                          <button
-                            class="option-card"
-                            style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
-                            @click=${() => this.setPresetAmount(0.1)}
-                          >
-                            Test ($0.1)
-                          </button>
-                          <button
-                            class="option-card"
-                            style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
-                            @click=${() => this.setPresetAmount(5)}
-                          >
-                            Low ($5)
-                          </button>
-                          <button
-                            class="option-card"
-                            style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
-                            @click=${() => this.setPresetAmount(10)}
-                          >
-                            Medium ($10)
-                          </button>
-                          <button
-                            class="option-card"
-                            style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
-                            @click=${() => this.setPresetAmount(25)}
-                          >
-                            High ($25)
-                          </button>
+                          ${this.useWagerToken
+                            ? html`
+                                <button
+                                  class="option-card"
+                                  style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
+                                  @click=${() => (this.betAmount = "0")}
+                                >
+                                  Free (0 fUSD)
+                                </button>
+                                <button
+                                  class="option-card"
+                                  style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
+                                  @click=${() => (this.betAmount = "1")}
+                                >
+                                  Low (1 fUSD)
+                                </button>
+                                <button
+                                  class="option-card"
+                                  style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
+                                  @click=${() => (this.betAmount = "10")}
+                                >
+                                  High (10 fUSD)
+                                </button>
+                              `
+                            : html`
+                                <button
+                                  class="option-card"
+                                  style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
+                                  @click=${() => this.setPresetAmount(0)}
+                                >
+                                  Free ($0)
+                                </button>
+                                <button
+                                  class="option-card"
+                                  style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
+                                  @click=${() => this.setPresetAmount(1)}
+                                >
+                                  Low ($1)
+                                </button>
+                                <button
+                                  class="option-card"
+                                  style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
+                                  @click=${() => this.setPresetAmount(10)}
+                                >
+                                  High ($10)
+                                </button>
+                              `}
                         </div>
                       `
                     : ""
@@ -419,11 +453,13 @@ export class CreateTournamentModal extends LitElement {
                           style="width:100%; font-size:16px; padding:14px;"
                           @click=${this.createTournament.bind(this)}
                           ?disabled=${this.isCreating ||
-                          !this.isValidBetAmount()}
+                          !this.isValidStakeAmount()}
                         >
                           ${this.isCreating
                             ? "Creating Tournament..."
-                            : "Create Tournament"}
+                            : this.useWagerToken
+                              ? "Create Tournament (fUSD)"
+                              : "Create Tournament"}
                         </button>
                       </div>
                     `
@@ -724,6 +760,110 @@ export class CreateTournamentModal extends LitElement {
             )}
         </div>
 
+        <div class="allowlist-section">
+          <div class="option-title" style="margin-top: 24px;">
+            Allowlist Controls
+          </div>
+
+          <div class="allowlist-toggle">
+            <label class="option-card" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px;">
+              <input
+                type="checkbox"
+                .checked=${this.allowlistEnabled}
+                ?disabled=${!this.lobbyId || this.isUpdatingAllowlist}
+                @change=${this.handleAllowlistToggle}
+              />
+              <span>Enable allowlist (only listed addresses can join)</span>
+            </label>
+          </div>
+
+          <div class="allowlist-input" style="margin-top: 12px;">
+            <textarea
+              placeholder="Enter Ethereum addresses separated by commas or new lines"
+              .value=${this.allowlistInput}
+              ?disabled=${!this.lobbyId || !this.allowlistEnabled || this.isUpdatingAllowlist}
+              @input=${(event: Event) => {
+                this.allowlistInput = (
+                  event.target as HTMLTextAreaElement
+                ).value;
+              }}
+              style="width: 100%; min-height: 100px; background: rgba(255,255,255,0.05); color: #fff; padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);"
+            ></textarea>
+          </div>
+
+          <div style="display: flex; gap: 12px; margin-top: 12px;">
+            <button
+              class="start-game-button"
+              style="flex: 1; background: rgba(76, 175, 80, 0.85);"
+              @click=${this.addAllowlistAddresses}
+              ?disabled=${!this.lobbyId || !this.allowlistEnabled || this.isUpdatingAllowlist}
+            >
+              Add to allowlist
+            </button>
+            <button
+              class="start-game-button"
+              style="flex: 1; background: rgba(255, 87, 34, 0.85);"
+              @click=${this.removeAllowlistAddresses}
+              ?disabled=${!this.lobbyId || !this.allowlistEnabled || this.isUpdatingAllowlist}
+            >
+              Remove from allowlist
+            </button>
+          </div>
+
+          ${
+            this.allowlistStatusMessage
+              ? html`
+                  <div
+                    style="margin-top: 8px; color: #ffcc80; font-size: 13px; text-align: center;"
+                  >
+                    ${this.allowlistStatusMessage}
+                  </div>
+                `
+              : html``
+          }
+
+          ${
+            this.currentAllowlist.length
+              ? html`
+                  <div
+                    style="margin-top: 16px; background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; max-height: 160px; overflow-y: auto;"
+                  >
+                    <div
+                      style="font-weight: bold; margin-bottom: 8px; color: #9ccc65;"
+                    >
+                      Current Allowlisted Addresses
+                      (${this.currentAllowlist.length})
+                    </div>
+                    <ul
+                      style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px;"
+                    >
+                      ${this.currentAllowlist.map(
+                        (address) => html`
+                          <li
+                            style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 8px 10px; border-radius: 6px;"
+                          >
+                            <span
+                              style="font-family: monospace; font-size: 13px;"
+                              >${address}</span
+                            >
+                            <button
+                              class="remove-player-btn"
+                              style="font-size: 14px; padding: 4px 8px;"
+                              @click=${() =>
+                                this.removeAllowlistAddresses([address])}
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        `,
+                      )}
+                    </ul>
+                  </div>
+                `
+              : html``
+          }
+        </div>
+
         <div class="start-game-button-container">
           <button
             @click=${this.startGame}
@@ -734,6 +874,18 @@ export class CreateTournamentModal extends LitElement {
               this.clients.length === 1
                 ? translateText("host_modal.waiting")
                 : translateText("host_modal.start")
+            }
+          </button>
+          <button
+            @click=${this.cancelLobby}
+            ?disabled=${!this.lobbyId || this.isCancelling}
+            class="start-game-button"
+            style="margin-top: 12px; background: rgba(244, 67, 54, 0.85);"
+          >
+            ${
+              this.isCancelling
+                ? "Cancelling..."
+                : translateText("host_modal.cancel_lobby")
             }
           </button>
         </div>
@@ -787,10 +939,9 @@ export class CreateTournamentModal extends LitElement {
     if (!this.ethPriceUSD) {
       // Fallback if price not loaded
       const fallbacks: Record<number, string> = {
-        0.1: "0.00003",
-        5: "0.002",
+        0: "0",
+        1: "0.0004",
         10: "0.004",
-        25: "0.01",
       };
       this.betAmount = fallbacks[usdTarget] ?? "0.001";
     } else {
@@ -1080,10 +1231,11 @@ export class CreateTournamentModal extends LitElement {
   }
 
   private async createOnchainAndServerLobby(): Promise<void> {
-    // Validate bet amount
     const amt = (this.betAmount ?? "").trim();
-    if (!amt || isNaN(Number(amt)) || Number(amt) <= 0) {
-      throw new Error("Please enter a valid entry amount in ETH");
+    if (!amt || isNaN(Number(amt)) || Number(amt) < 0) {
+      throw new Error(
+        `Please enter a valid entry amount in ${this.useWagerToken ? "fUSD" : "ETH"}`,
+      );
     }
 
     // Generate lobby id at creation time
@@ -1132,9 +1284,11 @@ export class CreateTournamentModal extends LitElement {
     );
   }
 
-  private isValidBetAmount(): boolean {
+  private isValidStakeAmount(): boolean {
     const amt = (this.betAmount ?? "").trim();
-    return !!amt && !isNaN(Number(amt)) && Number(amt) > 0;
+    if (!amt) return false;
+    const num = Number(amt);
+    return !isNaN(num) && num >= 0;
   }
 
   private async createTournament(): Promise<void> {
@@ -1143,11 +1297,156 @@ export class CreateTournamentModal extends LitElement {
       this.creationSuccess = false;
       await this.createOnchainAndServerLobby();
       this.creationSuccess = true;
+      this.allowlistStatusMessage = "";
     } catch (e: any) {
       console.error("Failed to create tournament:", e);
       alert(e?.message ?? "Failed to create tournament");
     } finally {
       this.isCreating = false;
+    }
+  }
+
+  private async cancelLobby() {
+    if (!this.lobbyId || this.isCancelling) return;
+
+    const confirmed = window.confirm(
+      "Cancel tournament? All players will be refunded.",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    this.isCancelling = true;
+
+    try {
+      await cancelLobbyOnchain({ lobbyId: this.lobbyId });
+
+      const config = await getServerConfigFromClient();
+      await fetch(
+        `${window.location.origin}/${config.workerPath(this.lobbyId)}/api/cancel_game/${this.lobbyId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+
+      this.close();
+    } catch (error: any) {
+      console.error("Failed to cancel lobby:", error);
+      alert(error?.message ?? "Failed to cancel lobby");
+    } finally {
+      this.isCancelling = false;
+      this.allowlistStatusMessage = "";
+    }
+  }
+
+  private parseAllowlistInput(): string[] {
+    const raw = this.allowlistInput
+      .split(/\s|,|;|\n|\r/)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+
+    return Array.from(new Set(raw));
+  }
+
+  private async handleAllowlistToggle(event: Event) {
+    if (!this.lobbyId || this.isUpdatingAllowlist) {
+      return;
+    }
+
+    const enabled = (event.target as HTMLInputElement).checked;
+    this.isUpdatingAllowlist = true;
+    this.allowlistStatusMessage = "";
+
+    try {
+      await setAllowlistEnabledOnchain({
+        lobbyId: this.lobbyId,
+        enabled,
+      });
+
+      this.allowlistEnabled = enabled;
+      if (!enabled) {
+        this.allowlistInput = "";
+        this.currentAllowlist = [];
+      }
+
+      this.allowlistStatusMessage = enabled
+        ? "Allowlist has been enabled. Add addresses below."
+        : "Allowlist disabled; anyone can join.";
+    } catch (error: any) {
+      console.error("Failed to toggle allowlist:", error);
+      alert(error?.message ?? "Failed to update allowlist state");
+      (event.target as HTMLInputElement).checked = this.allowlistEnabled;
+    } finally {
+      this.isUpdatingAllowlist = false;
+    }
+  }
+
+  private async addAllowlistAddresses() {
+    if (!this.lobbyId || !this.allowlistEnabled || this.isUpdatingAllowlist) {
+      return;
+    }
+
+    const entries = this.parseAllowlistInput();
+    if (!entries.length) {
+      this.allowlistStatusMessage = "Enter at least one address to add.";
+      return;
+    }
+
+    this.isUpdatingAllowlist = true;
+    this.allowlistStatusMessage = "";
+
+    try {
+      await addToAllowlistOnchain({
+        lobbyId: this.lobbyId,
+        addresses: entries,
+      });
+
+      const updated = new Set([...this.currentAllowlist, ...entries]);
+      this.currentAllowlist = Array.from(updated);
+      this.allowlistInput = "";
+      this.allowlistStatusMessage = "Allowlist updated.";
+    } catch (error: any) {
+      console.error("Failed to add allowlist addresses:", error);
+      alert(error?.message ?? "Failed to add addresses");
+    } finally {
+      this.isUpdatingAllowlist = false;
+    }
+  }
+
+  private async removeAllowlistAddresses(addresses?: string[]) {
+    if (!this.lobbyId || !this.allowlistEnabled || this.isUpdatingAllowlist) {
+      return;
+    }
+
+    const entries = addresses ?? this.parseAllowlistInput();
+    if (!entries.length) {
+      this.allowlistStatusMessage = "Enter at least one address to remove.";
+      return;
+    }
+
+    this.isUpdatingAllowlist = true;
+    this.allowlistStatusMessage = "";
+
+    try {
+      await removeFromAllowlistOnchain({
+        lobbyId: this.lobbyId,
+        addresses: entries,
+      });
+
+      const updated = this.currentAllowlist.filter(
+        (address) => !entries.includes(address),
+      );
+      this.currentAllowlist = updated;
+      this.allowlistInput = "";
+      this.allowlistStatusMessage = "Allowlist updated.";
+    } catch (error: any) {
+      console.error("Failed to remove allowlist addresses:", error);
+      alert(error?.message ?? "Failed to remove addresses");
+    } finally {
+      this.isUpdatingAllowlist = false;
     }
   }
 }

@@ -1,10 +1,8 @@
 # Caddy configuration for OpenFront with HTTPS
-# Set DOMAIN environment variable to your domain (e.g., api.eigenarcade.com)
+# Set DOMAIN environment variable to your domain (e.g., openfront-megaeth-testnet.eigenarcade.com)
 
 {$DOMAIN:localhost} {
-    # TLS configuration - automatic HTTPS
-    # Caddy will automatically obtain Let's Encrypt certificates
-    # No manual certificate management needed
+    tls /run/tls/fullchain.pem /run/tls/privkey.pem
 
     # Worker routing - route /wN and /wN/* to port 3001+N
     # Dev mode uses 2 workers (w0, w1), prod uses up to 20

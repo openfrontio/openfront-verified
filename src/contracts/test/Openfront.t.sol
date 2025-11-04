@@ -4,6 +4,7 @@ pragma solidity ^0.8.19;
 import "forge-std/Test.sol";
 import {Openfront} from "src/Openfront.sol";
 import {IOpenfront} from "src/interfaces/IOpenfront.sol";
+import {MockERC20} from "test/mocks/MockERC20.sol";
 
 contract OpenfrontTest is Test {
     Openfront internal openfront;
@@ -13,6 +14,7 @@ contract OpenfrontTest is Test {
     address internal attacker = address(0xDEAD);
     address internal server = address(0x5E1CE);
     uint256 internal bet = 1 ether;
+    MockERC20 internal token;
 
     function setUp() public {
         vm.deal(host, 100 ether);
@@ -21,13 +23,49 @@ contract OpenfrontTest is Test {
         vm.deal(attacker, 100 ether);
         vm.deal(server, 0);
         openfront = new Openfront(server);
+        token = new MockERC20("Mock", "MCK", 18);
+        token.mint(host, 1_000 ether);
+        token.mint(player1, 1_000 ether);
+        token.mint(player2, 1_000 ether);
+        token.mint(attacker, 1_000 ether);
     }
 
-    function testCreateLobby_RevertOnZeroBet() public {
+    function testCreateLobby_AllowsZeroBet() public {
         bytes32 id = keccak256("lobby-0");
         vm.prank(host);
-        vm.expectRevert(IOpenfront.InvalidBetAmount.selector);
-        openfront.createLobby{value: 0}(id, 0, true);
+        openfront.createLobby{value: 0}(id, 0, true, address(0));
+
+        (
+            address hostAddress,
+            uint256 betAmount,
+            address[] memory participants,
+            uint8 status,
+            address winner,
+            uint256 totalPrize,
+            address stakeToken
+        ) = openfront.getLobby(id);
+        assertEq(hostAddress, host);
+        assertEq(betAmount, 0);
+        assertEq(participants.length, 1);
+        assertEq(participants[0], host);
+        assertEq(status, uint8(Openfront.GameStatus.Created));
+        assertEq(winner, address(0));
+        assertEq(totalPrize, 0);
+        assertEq(stakeToken, address(0));
+
+        bytes32 idToken = keccak256("lobby-0-token");
+        vm.startPrank(host);
+        token.approve(address(openfront), bet);
+        openfront.createLobby{value: 0}(idToken, 0, true, address(token));
+        vm.stopPrank();
+
+        (, uint256 betAmountToken, address[] memory participantsToken,, address winnerToken, uint256 totalPrizeToken, address stakeTokenAddress) = openfront.getLobby(idToken);
+        assertEq(betAmountToken, 0);
+        assertEq(participantsToken.length, 1);
+        assertEq(participantsToken[0], host);
+        assertEq(winnerToken, address(0));
+        assertEq(totalPrizeToken, 0);
+        assertEq(stakeTokenAddress, address(token));
     }
 
     function testOnlyOwnerSetGameServer_AndEvent() public {
@@ -46,7 +84,7 @@ contract OpenfrontTest is Test {
         bytes32 id = keccak256("lobby-max");
         // owner is address(this), host will be 'host'
         vm.prank(host);
-        openfront.createLobby{value: bet}(id, bet, true);
+        openfront.createLobby{value: bet}(id, bet, true, address(0));
 
         // Set cap to 2 (host + one more)
         vm.prank(host);
@@ -73,7 +111,7 @@ contract OpenfrontTest is Test {
     function testCancelLobbyRefundsAndBlocksFurtherActions() public {
         bytes32 id = keccak256("lobby-cancel");
         vm.prank(host);
-        openfront.createLobby{value: bet}(id, bet, false);
+        openfront.createLobby{value: bet}(id, bet, false, address(0));
         vm.prank(player1);
         openfront.joinLobby{value: bet}(id);
 
@@ -103,9 +141,10 @@ contract OpenfrontTest is Test {
     function testCreateLobby_SuccessAndVisible() public {
         bytes32 id = keccak256("lobby-1");
         vm.prank(host);
-        openfront.createLobby{value: bet}(id, bet, true);
+        openfront.createLobby{value: bet}(id, bet, true, address(0));
 
-        (address h,, address[] memory parts, uint8 status,, uint256 total) = openfront.getLobby(id);
+        (address h,, address[] memory parts, uint8 status,, uint256 total, address stakeToken) = openfront.getLobby(id);
+        assertEq(stakeToken, address(0));
         assertEq(h, host);
         assertEq(parts.length, 1);
         assertEq(parts[0], host);
@@ -121,7 +160,7 @@ contract OpenfrontTest is Test {
     function testJoinLobby_SuccessAndDuplicateRevert() public {
         bytes32 id = keccak256("lobby-2");
         vm.prank(host);
-        openfront.createLobby{value: bet}(id, bet, false);
+        openfront.createLobby{value: bet}(id, bet, false, address(0));
 
         vm.prank(player1);
         openfront.joinLobby{value: bet}(id);
@@ -136,7 +175,7 @@ contract OpenfrontTest is Test {
     function testStartGame_OnlyHostAndMinPlayers() public {
         bytes32 id = keccak256("lobby-3");
         vm.prank(host);
-        openfront.createLobby{value: bet}(id, bet, true);
+        openfront.createLobby{value: bet}(id, bet, true, address(0));
 
         // Not enough players
         vm.prank(host);
@@ -159,7 +198,7 @@ contract OpenfrontTest is Test {
     function testDeclareWinner_FlowAndChecks() public {
         bytes32 id = keccak256("lobby-4");
         vm.prank(host);
-        openfront.createLobby{value: bet}(id, bet, true);
+        openfront.createLobby{value: bet}(id, bet, true, address(0));
         vm.prank(player1);
         openfront.joinLobby{value: bet}(id);
         vm.prank(host);
@@ -183,7 +222,7 @@ contract OpenfrontTest is Test {
     function testClaimPrize_EndToEnd() public {
         bytes32 id = keccak256("lobby-5");
         vm.prank(host);
-        openfront.createLobby{value: bet}(id, bet, false);
+        openfront.createLobby{value: bet}(id, bet, false, address(0));
         vm.prank(player1);
         openfront.joinLobby{value: bet}(id);
         vm.prank(host);
@@ -207,7 +246,7 @@ contract OpenfrontTest is Test {
     function testAllowlist_DefaultDisabled_AllCanJoin() public {
         bytes32 id = keccak256("lobby-allow-0");
         vm.prank(host);
-        openfront.createLobby{value: bet}(id, bet, true);
+        openfront.createLobby{value: bet}(id, bet, true, address(0));
 
         // Allowlist disabled by default
         assertEq(openfront.isAllowlistEnabled(id), false);
@@ -223,7 +262,7 @@ contract OpenfrontTest is Test {
     function testAllowlist_EnableBlocksNonAllowlisted() public {
         bytes32 id = keccak256("lobby-allow-1");
         vm.prank(host);
-        openfront.createLobby{value: bet}(id, bet, false);
+        openfront.createLobby{value: bet}(id, bet, false, address(0));
 
         // Enable allowlist
         vm.prank(host);
@@ -249,7 +288,7 @@ contract OpenfrontTest is Test {
     function testAllowlist_AddRemove() public {
         bytes32 id = keccak256("lobby-allow-2");
         vm.prank(host);
-        openfront.createLobby{value: bet}(id, bet, true);
+        openfront.createLobby{value: bet}(id, bet, true, address(0));
 
         vm.prank(host);
         openfront.setAllowlistEnabled(id, true);
@@ -283,7 +322,7 @@ contract OpenfrontTest is Test {
     function testAllowlist_DisableAfterEnable_AllCanJoin() public {
         bytes32 id = keccak256("lobby-allow-3");
         vm.prank(host);
-        openfront.createLobby{value: bet}(id, bet, false);
+        openfront.createLobby{value: bet}(id, bet, false, address(0));
 
         vm.prank(host);
         openfront.setAllowlistEnabled(id, true);
@@ -305,7 +344,7 @@ contract OpenfrontTest is Test {
     function testAllowlist_PermissionsAndStatusChecks() public {
         bytes32 id = keccak256("lobby-allow-4");
         vm.prank(host);
-        openfront.createLobby{value: bet}(id, bet, true);
+        openfront.createLobby{value: bet}(id, bet, true, address(0));
 
         // Only host can toggle enable
         vm.prank(attacker);
@@ -342,5 +381,86 @@ contract OpenfrontTest is Test {
         vm.prank(host);
         vm.expectRevert(IOpenfront.InvalidStatus.selector);
         openfront.removeFromAllowlist(id, addrs);
+    }
+
+    function testERC20LobbyFlow() public {
+        bytes32 id = keccak256("erc20-lobby");
+        vm.startPrank(host);
+        token.approve(address(openfront), bet);
+        openfront.createLobby{value: 0}(id, bet, true, address(token));
+        vm.stopPrank();
+
+        vm.startPrank(player1);
+        token.approve(address(openfront), bet);
+        openfront.joinLobby{value: 0}(id);
+        vm.stopPrank();
+
+        vm.prank(host);
+        openfront.startGame(id);
+        vm.prank(server);
+        openfront.declareWinner(id, player1);
+
+        uint256 before = token.balanceOf(player1);
+        vm.prank(player1);
+        openfront.claimPrize(id);
+        assertEq(token.balanceOf(player1), before + bet * 2);
+    }
+
+    function testAddToPrizePoolNative() public {
+        bytes32 id = keccak256("sponsor-native");
+        vm.prank(host);
+        openfront.createLobby{value: bet}(id, bet, true, address(0));
+
+        uint256 before = player1.balance;
+        vm.prank(player1);
+        openfront.addToPrizePool{value: bet}(id, bet);
+        (, , , , , uint256 totalPrizeNative,) = openfront.getLobby(id);
+        assertEq(totalPrizeNative, bet * 2);
+        assertEq(player1.balance, before - bet);
+    }
+
+    function testAddToPrizePoolERC20() public {
+        bytes32 id = keccak256("sponsor-erc20");
+        vm.startPrank(host);
+        token.approve(address(openfront), bet);
+        openfront.createLobby{value: 0}(id, bet, true, address(token));
+        vm.stopPrank();
+
+        vm.startPrank(player1);
+        token.approve(address(openfront), bet);
+        openfront.addToPrizePool(id, bet);
+        vm.stopPrank();
+
+        (, , , , , uint256 totalPrize,) = openfront.getLobby(id);
+        assertEq(totalPrize, bet * 2);
+    }
+
+    function testCancelLobbyRefundsERC20ParticipantsAndSponsors() public {
+        bytes32 id = keccak256("erc20-cancel");
+        vm.startPrank(host);
+        token.approve(address(openfront), bet);
+        openfront.createLobby{value: 0}(id, bet, false, address(token));
+        vm.stopPrank();
+
+        vm.startPrank(player1);
+        token.approve(address(openfront), bet);
+        openfront.joinLobby{value: 0}(id);
+        token.approve(address(openfront), bet);
+        openfront.addToPrizePool(id, bet);
+        vm.stopPrank();
+
+        (, , address[] memory participants,, , ,) = openfront.getLobby(id);
+        assertEq(participants.length, 2);
+        assertEq(participants[0], host);
+        assertEq(participants[1], player1);
+
+        uint256 hostBefore = token.balanceOf(host);
+        uint256 playerBefore = token.balanceOf(player1);
+
+        vm.prank(host);
+        openfront.cancelLobby(id);
+
+        assertEq(token.balanceOf(host), hostBefore + bet);
+        assertEq(token.balanceOf(player1), playerBefore + bet * 2);
     }
 }

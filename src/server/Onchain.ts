@@ -1,27 +1,40 @@
 import {
   createPublicClient,
   createWalletClient,
+  encodeFunctionData,
   getAddress,
   http,
+  parseGwei,
   type Address,
+  type Hash,
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 import { waitForTransactionReceipt } from "viem/actions";
-import { baseSepolia } from "viem/chains";
+import { megaethTestnet } from "viem/chains";
 import { ContractABI } from "./ContractABI";
 import { logger } from "./Logger";
 
 const log = logger.child({ comp: "onchain" });
 
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
+const ERC20_SYMBOL_ABI = [
+  {
+    type: "function",
+    name: "symbol",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+  },
+] as const;
+
 // Configuration
-const RPC_URL =
-  process.env.RPC_URL ?? "https://ethereum-sepolia.publicnode.com";
+const RPC_URL = process.env.RPC_URL ?? "https://carrot.megaeth.com/rpc";
 const CONTRACT_ADDRESS = (process.env.CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as Address;
 const MNEMONIC = process.env.MNEMONIC;
 
 // Always use Base Sepolia
-const chain = baseSepolia;
+const chain = megaethTestnet;
 
 // Log configuration on startup
 log.info("On-chain configuration:", {
@@ -57,6 +70,53 @@ export const walletClient = createWalletClient({
   chain,
   transport: http(RPC_URL),
 });
+
+const GAS_LIMIT = 1_000_000_000n;
+const MAX_FEE_PER_GAS = parseGwei("0.0025");
+const MAX_PRIORITY_FEE_PER_GAS = parseGwei("0.001");
+
+async function submitRawContractWrite(params: {
+  functionName: string;
+  args?: any[];
+  value?: bigint;
+}): Promise<Hash> {
+  if (!serverAccount) {
+    throw new Error("Server account unavailable for contract write");
+  }
+
+  const data = encodeFunctionData({
+    abi: ContractABI as unknown as any,
+    functionName: params.functionName,
+    args: params.args ?? [],
+  });
+
+  const nonce = await publicClient.getTransactionCount({
+    address: serverAccount.address,
+    blockTag: "pending",
+  });
+
+  const request: any = {
+    account: serverAccount,
+    chain,
+    to: CONTRACT_ADDRESS,
+    data,
+    nonce,
+    gas: GAS_LIMIT,
+    maxFeePerGas: MAX_FEE_PER_GAS,
+    maxPriorityFeePerGas: MAX_PRIORITY_FEE_PER_GAS,
+    type: "eip1559",
+  };
+
+  if (typeof params.value !== "undefined") {
+    request.value = params.value;
+  }
+
+  const serializedTransaction = await walletClient.signTransaction(request);
+
+  return await publicClient.sendRawTransaction({
+    serializedTransaction,
+  });
+}
 
 function stringToBytes32(str: string): `0x${string}` {
   if (str.startsWith("0x") && str.length === 66) return str as `0x${string}`;
@@ -94,6 +154,8 @@ export type LobbyInfo = {
   status: GameStatus;
   winner: Address;
   totalPrize: bigint;
+  wagerToken: Address;
+  wagerSymbol: string;
 };
 
 export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
@@ -104,9 +166,26 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
       abi: ContractABI as unknown as any,
       functionName: "getLobby",
       args: [lobbyIdBytes32],
-    })) as [Address, bigint, Address[], number, Address, bigint];
+    })) as [Address, bigint, Address[], number, Address, bigint, Address];
 
-    const [host, betAmount, participants, status, winner, totalPrize] = result;
+    const [
+      host,
+      betAmount,
+      participants,
+      status,
+      winner,
+      totalPrize,
+      stakeToken,
+    ] = result;
+    const symbol =
+      stakeToken === ZERO_ADDRESS
+        ? "ETH"
+        : ((await publicClient.readContract({
+            address: stakeToken,
+            abi: ERC20_SYMBOL_ABI,
+            functionName: "symbol",
+          })) as string);
+
     if (host === "0x0000000000000000000000000000000000000000") return null;
     return {
       host,
@@ -115,6 +194,8 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
       status: status as GameStatus,
       winner,
       totalPrize,
+      wagerToken: stakeToken,
+      wagerSymbol: symbol,
     };
   } catch (e) {
     return null;
@@ -155,10 +236,7 @@ export async function startGameOnChain(
     let lastError: unknown = null;
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        const hash = await walletClient.writeContract({
-          account: serverAccount,
-          address: CONTRACT_ADDRESS,
-          abi: ContractABI as unknown as any,
+        const hash = await submitRawContractWrite({
           functionName: "startGame",
           args: [lobbyIdBytes32],
         });
@@ -220,10 +298,7 @@ export async function declareWinnerOnChain(
           lobbyId,
         });
 
-        const hash = await walletClient.writeContract({
-          account: serverAccount,
-          address: CONTRACT_ADDRESS,
-          abi: ContractABI as unknown as any,
+        const hash = await submitRawContractWrite({
           functionName: "declareWinner",
           args: [lobbyIdBytes32, getAddress(winnerAddress)],
         });
@@ -252,6 +327,43 @@ export async function declareWinnerOnChain(
     throw lastError ?? new Error("declareWinner write failed");
   } catch (e) {
     log.error("declareWinnerOnChain exception", {
+      lobbyId,
+      error: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+    });
+    return null;
+  }
+}
+
+export async function cancelLobbyOnChain(
+  lobbyId: string,
+): Promise<string | null> {
+  try {
+    if (!serverAccount) {
+      log.error("Cannot cancel lobby: no server account configured");
+      return null;
+    }
+
+    const lobbyIdBytes32 = stringToBytes32(lobbyId);
+
+    log.info("Cancelling lobby on-chain", {
+      lobbyId,
+      serverAccount: serverAccount.address,
+    });
+
+    const hash = await submitRawContractWrite({
+      functionName: "cancelLobby",
+      args: [lobbyIdBytes32],
+    });
+
+    log.info("Lobby cancellation transaction submitted", {
+      lobbyId,
+      txHash: hash,
+    });
+
+    return hash;
+  } catch (e) {
+    log.error("cancelLobbyOnChain exception", {
       lobbyId,
       error: e instanceof Error ? e.message : String(e),
       stack: e instanceof Error ? e.stack : undefined,

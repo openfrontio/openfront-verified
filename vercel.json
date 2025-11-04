@@ -8,15 +8,15 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://api.eigenarcade.com/api/:path*"
+      "destination": "https://openfront-megaeth-testnet.eigenarcade.com/api/:path*"
     },
     {
       "source": "/w0/:path*",
-      "destination": "https://api.eigenarcade.com/w0/:path*"
+      "destination": "https://openfront-megaeth-testnet.eigenarcade.com/w0/:path*"
     },
     {
       "source": "/w1/:path*",
-      "destination": "https://api.eigenarcade.com/w1/:path*"
+      "destination": "https://openfront-megaeth-testnet.eigenarcade.com/w1/:path*"
     },
     {
       "source": "/:path((?!_next|api|static|favicon.ico|robots.txt|.*\\..*).*)",
@@ -63,7 +63,7 @@
   "build": {
     "env": {
       "NODE_ENV": "production",
-      "WS_HOST": "api.eigenarcade.com"
+      "WS_HOST": "openfront-megaeth-testnet.eigenarcade.com"
     }
   },
   "regions": ["sfo1"]

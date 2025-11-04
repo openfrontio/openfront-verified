@@ -2,14 +2,23 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  encodeFunctionData,
   formatEther,
+  formatUnits,
+  getAddress,
   http,
-  parseEther,
+  parseGwei,
+  parseUnits,
   type Hash,
 } from "viem";
-import { baseSepolia } from "viem/chains";
-import { CONTRACT_ADDRESS, ZERO_ADDRESS } from "./constants/Config";
+import { megaethTestnet } from "viem/chains";
+import {
+  CONTRACT_ADDRESS,
+  FAKE_USD_TOKEN_ADDRESS,
+  ZERO_ADDRESS,
+} from "./constants/Config";
 import { CONTRACT_ABI } from "./constants/ContractABI";
+import { ERC20_ABI } from "./constants/ERC20ABI";
 import { bytes32ToString, stringToBytes32 } from "./utilities/ContractHelpers";
 import { WalletManager } from "./Wallet";
 
@@ -21,23 +30,27 @@ const RPC_URL =
 
 console.log("[Contract] Client blockchain config:", {
   contractAddress: CONTRACT_ADDRESS,
-  rpcUrl: RPC_URL ?? "default (baseSepolia public node)",
-  chain: "baseSepolia",
+  rpcUrl: RPC_URL ?? "default (megaethTestnet public node)",
+  chain: "megaethTestnet",
 });
 
 // Centralized viem clients and helpers
 const publicClient = createPublicClient({
-  chain: baseSepolia,
+  chain: megaethTestnet,
   transport: RPC_URL ? http(RPC_URL) : http(),
 });
 let walletClientCache: any | null = null;
+
+const GAS_LIMIT = 1_000_000_000n;
+const MAX_FEE_PER_GAS = parseGwei("0.0025");
+const MAX_PRIORITY_FEE_PER_GAS = parseGwei("0.001");
 
 async function getWalletClient() {
   if (walletClientCache) return walletClientCache;
   const provider = await window.privyWallet?.getEmbeddedProvider?.();
   if (!provider) throw new Error("Embedded wallet provider unavailable");
   walletClientCache = createWalletClient({
-    chain: baseSepolia,
+    chain: megaethTestnet,
     transport: custom(provider),
   });
   return walletClientCache;
@@ -64,7 +77,39 @@ async function wagmiWrite(params: {
   const account = walletManager.address as `0x${string}` | undefined;
   if (!account) throw new Error("No connected wallet");
   const client = await getWalletClient();
-  return await client.writeContract({ account, ...params });
+
+  const { address, abi, functionName, args, value } = params;
+  const data = encodeFunctionData({
+    abi,
+    functionName,
+    args: args ?? [],
+  });
+
+  const nonce = await publicClient.getTransactionCount({
+    address: account,
+    blockTag: "pending",
+  });
+
+  const request: any = {
+    account,
+    chain: megaethTestnet,
+    to: address,
+    data,
+    nonce,
+    gas: GAS_LIMIT,
+    maxFeePerGas: MAX_FEE_PER_GAS,
+    maxPriorityFeePerGas: MAX_PRIORITY_FEE_PER_GAS,
+  };
+
+  if (typeof value !== "undefined") {
+    request.value = value;
+  }
+
+  const serializedTransaction = await client.signTransaction(request);
+
+  return await client.sendRawTransaction({
+    serializedTransaction,
+  });
 }
 
 function wagmiWatch(params: {
@@ -127,6 +172,95 @@ export interface StartGameResult {
   playerAddress: string;
 }
 
+export interface CancelLobbyParams {
+  lobbyId: string;
+}
+
+export interface CancelLobbyResult {
+  hash: Hash;
+  lobbyId: string;
+  hostAddress: string;
+}
+
+export async function requestFaucetTokens(): Promise<Hash> {
+  const walletManager = WalletManager.getInstance();
+  const account = walletManager.address as `0x${string}` | undefined;
+  if (!account) throw new Error("No connected wallet");
+
+  return await wagmiWrite({
+    address: FAKE_USD_TOKEN_ADDRESS,
+    abi: [
+      {
+        type: "function",
+        name: "faucet",
+        inputs: [],
+        outputs: [],
+        stateMutability: "nonpayable",
+      },
+    ],
+    functionName: "faucet",
+  });
+}
+
+export async function getTokenBalances(account: `0x${string}`) {
+  const balances: { symbol: string; balance: string }[] = [];
+
+  const nativeBalance = await publicClient.getBalance({ address: account });
+  balances.push({ symbol: "ETH", balance: formatEther(nativeBalance) });
+
+  try {
+    const [fakeBalance, fakeSymbol] = await Promise.all([
+      publicClient.readContract({
+        address: FAKE_USD_TOKEN_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [account],
+      }) as Promise<bigint>,
+      publicClient.readContract({
+        address: FAKE_USD_TOKEN_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: "symbol",
+      }) as Promise<string>,
+    ]);
+
+    balances.push({
+      symbol: fakeSymbol,
+      balance: formatUnits(fakeBalance, 18),
+    });
+  } catch (error) {
+    console.warn("Failed to fetch fUSD balance:", error);
+    balances.push({
+      symbol: "fUSD",
+      balance: "—",
+    });
+  }
+
+  return balances;
+}
+
+export function getFakeUsdFromWei(wei: bigint): string {
+  return formatUnits(wei, 18);
+}
+
+export function parseFakeUsd(value: string): bigint {
+  return parseUnits(value, 18);
+}
+
+export interface SetAllowlistEnabledParams {
+  lobbyId: string;
+  enabled: boolean;
+}
+
+export interface AddToAllowlistParams {
+  lobbyId: string;
+  addresses: string[];
+}
+
+export interface RemoveFromAllowlistParams {
+  lobbyId: string;
+  addresses: string[];
+}
+
 // Wallet connection is handled by Privy via the provider; no manual connect here
 
 export async function createLobby(
@@ -142,7 +276,7 @@ export async function createLobby(
     );
   }
 
-  const betAmountWei = parseEther(betAmount);
+  const betAmountWei = parseUnits(betAmount, 18);
   const lobbyIdBytes32 = stringToBytes32(lobbyId);
   const isPublic = lobbyVisibility === "public" ? true : false;
 
@@ -152,16 +286,14 @@ export async function createLobby(
     betAmount,
     betAmountWei: betAmountWei.toString(),
     contractAddress: CONTRACT_ADDRESS,
+    wagerToken: FAKE_USD_TOKEN_ADDRESS,
   });
 
-  // Let wallet auto-estimate gas (more reliable than manual estimation)
   const hash = await wagmiWrite({
     address: CONTRACT_ADDRESS,
     abi: CONTRACT_ABI,
     functionName: "createLobby",
-    args: [lobbyIdBytes32, betAmountWei, isPublic],
-    value: betAmountWei as any,
-    // Removed manual gas estimation - let wallet/provider handle it
+    args: [lobbyIdBytes32, betAmountWei, isPublic, FAKE_USD_TOKEN_ADDRESS],
   });
 
   console.log("Transaction submitted, polling for confirmation...", {
@@ -220,6 +352,8 @@ export interface LobbyInfo {
   status: GameStatus;
   winner: string;
   totalPrize: bigint;
+  wagerToken: string;
+  wagerSymbol: string;
   exists: boolean;
 }
 
@@ -233,27 +367,44 @@ export interface PublicLobbyInfo {
   totalPrize: bigint;
   participantCount: number;
   formattedBetAmount: string;
+  wagerToken: string;
+  wagerSymbol: string;
 }
 
 export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
   try {
     const lobbyIdBytes32 = stringToBytes32(lobbyId);
 
-    console.log("Getting lobby info from blockchain:", {
-      lobbyId,
-      lobbyIdBytes32,
-    });
-
     const result = (await wagmiRead({
       address: CONTRACT_ADDRESS,
       abi: CONTRACT_ABI,
       functionName: "getLobby",
       args: [lobbyIdBytes32],
-    })) as [string, bigint, string[], number, string, bigint];
+    })) as [string, bigint, string[], number, string, bigint, string];
 
-    const [host, betAmount, participants, status, winner, totalPrize] = result;
+    const [
+      host,
+      betAmount,
+      participants,
+      status,
+      winner,
+      totalPrize,
+      wagerToken,
+    ] = result;
 
-    // If the host address is the zero address, the lobby doesn't exist
+    async function resolveSymbol(): Promise<string> {
+      if (wagerToken === ZERO_ADDRESS) {
+        return "ETH";
+      }
+      return (await publicClient.readContract({
+        address: wagerToken as `0x${string}`,
+        abi: ERC20_ABI,
+        functionName: "symbol",
+      })) as string;
+    }
+
+    const tokenSymbol = await resolveSymbol();
+
     const exists = host !== ZERO_ADDRESS;
 
     const lobbyInfo: LobbyInfo = {
@@ -263,6 +414,8 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
       status: status as GameStatus,
       winner,
       totalPrize,
+      wagerToken: wagerToken,
+      wagerSymbol: tokenSymbol,
       exists,
     };
 
@@ -312,7 +465,7 @@ export async function joinLobby(
     args: [lobbyIdBytes32],
   })) as [string, bigint, string[], number, string, bigint];
 
-  const [host, betAmount, participants, status, winner, totalPrize] = lobbyInfo;
+  const [host, betAmount, participants, status] = lobbyInfo;
 
   // Check if lobby exists
   if (host === ZERO_ADDRESS) {
@@ -670,6 +823,207 @@ export async function startGame(
   }
 }
 
+export async function cancelLobby(
+  params: CancelLobbyParams,
+): Promise<CancelLobbyResult> {
+  const { lobbyId } = params;
+
+  const walletManager = WalletManager.getInstance();
+  if (!walletManager.authenticated || !walletManager.address) {
+    throw new Error(
+      "Please connect your wallet using the Privy wallet button.",
+    );
+  }
+
+  const lobbyIdBytes32 = stringToBytes32(lobbyId);
+
+  console.log("Cancelling lobby on-chain:", {
+    lobbyId,
+    lobbyIdBytes32,
+    hostAddress: walletManager.address,
+  });
+
+  try {
+    const hash = await wagmiWrite({
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "cancelLobby",
+      args: [lobbyIdBytes32],
+    });
+
+    console.log("Successfully cancelled lobby, transaction hash:", hash);
+
+    return {
+      hash,
+      lobbyId,
+      hostAddress: walletManager.address!,
+    };
+  } catch (error: any) {
+    console.error("Failed to cancel lobby:", error);
+
+    if (error.message.includes("NotHost")) {
+      throw new Error("Only the host can cancel this lobby.");
+    } else if (error.message.includes("InvalidStatus")) {
+      throw new Error("Lobby cannot be cancelled in its current state.");
+    } else if (error.message.includes("User rejected")) {
+      throw new Error("Transaction was cancelled by user.");
+    } else {
+      throw new Error(
+        `Failed to cancel lobby: ${error.message ?? "Unknown error"}`,
+      );
+    }
+  }
+}
+
+export async function setAllowlistEnabled(
+  params: SetAllowlistEnabledParams,
+): Promise<Hash> {
+  const { lobbyId, enabled } = params;
+  const walletManager = WalletManager.getInstance();
+  if (!walletManager.authenticated || !walletManager.address) {
+    throw new Error(
+      "Please connect your wallet using the Privy wallet button.",
+    );
+  }
+
+  const lobbyIdBytes32 = stringToBytes32(lobbyId);
+
+  try {
+    return await wagmiWrite({
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "setAllowlistEnabled",
+      args: [lobbyIdBytes32, enabled],
+    });
+  } catch (error: any) {
+    console.error("Failed to update allowlist enabled state:", error);
+
+    if (error.message.includes("NotHost")) {
+      throw new Error("Only the host can modify the allowlist.");
+    } else if (error.message.includes("InvalidStatus")) {
+      throw new Error("Allowlist can only be updated while the lobby is open.");
+    } else if (error.message.includes("User rejected")) {
+      throw new Error("Transaction was cancelled by user.");
+    } else {
+      throw new Error(
+        `Failed to update allowlist: ${error.message ?? "Unknown error"}`,
+      );
+    }
+  }
+}
+
+export async function addToAllowlist(
+  params: AddToAllowlistParams,
+): Promise<Hash> {
+  const { lobbyId, addresses } = params;
+  if (!addresses.length) {
+    throw new Error("No addresses provided for allowlist.");
+  }
+
+  const walletManager = WalletManager.getInstance();
+  if (!walletManager.authenticated || !walletManager.address) {
+    throw new Error(
+      "Please connect your wallet using the Privy wallet button.",
+    );
+  }
+
+  const lobbyIdBytes32 = stringToBytes32(lobbyId);
+  let normalizedAddresses: `0x${string}`[];
+
+  try {
+    normalizedAddresses = Array.from(
+      new Set(addresses.map((address) => getAddress(address))),
+    ) as `0x${string}`[];
+  } catch (err: any) {
+    throw new Error(`Invalid address provided: ${err?.message ?? err}`);
+  }
+
+  if (!normalizedAddresses.length) {
+    throw new Error("No valid addresses provided for allowlist.");
+  }
+
+  try {
+    return await wagmiWrite({
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "addToAllowlist",
+      args: [lobbyIdBytes32, normalizedAddresses],
+    });
+  } catch (error: any) {
+    console.error("Failed to add addresses to allowlist:", error);
+
+    if (error.message.includes("NotHost")) {
+      throw new Error("Only the host can modify the allowlist.");
+    } else if (error.message.includes("InvalidStatus")) {
+      throw new Error("Allowlist can only be updated while the lobby is open.");
+    } else if (error.message.includes("ZeroAddress")) {
+      throw new Error("Cannot add the zero address to the allowlist.");
+    } else if (error.message.includes("User rejected")) {
+      throw new Error("Transaction was cancelled by user.");
+    } else {
+      throw new Error(
+        `Failed to add to allowlist: ${error.message ?? "Unknown error"}`,
+      );
+    }
+  }
+}
+
+export async function removeFromAllowlist(
+  params: RemoveFromAllowlistParams,
+): Promise<Hash> {
+  const { lobbyId, addresses } = params;
+  if (!addresses.length) {
+    throw new Error("No addresses provided for removal.");
+  }
+
+  const walletManager = WalletManager.getInstance();
+  if (!walletManager.authenticated || !walletManager.address) {
+    throw new Error(
+      "Please connect your wallet using the Privy wallet button.",
+    );
+  }
+
+  const lobbyIdBytes32 = stringToBytes32(lobbyId);
+  let normalizedAddresses: `0x${string}`[];
+
+  try {
+    normalizedAddresses = Array.from(
+      new Set(addresses.map((address) => getAddress(address))),
+    ) as `0x${string}`[];
+  } catch (err: any) {
+    throw new Error(`Invalid address provided: ${err?.message ?? err}`);
+  }
+
+  if (!normalizedAddresses.length) {
+    throw new Error("No valid addresses provided for removal.");
+  }
+
+  try {
+    return await wagmiWrite({
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "removeFromAllowlist",
+      args: [lobbyIdBytes32, normalizedAddresses],
+    });
+  } catch (error: any) {
+    console.error("Failed to remove addresses from allowlist:", error);
+
+    if (error.message.includes("NotHost")) {
+      throw new Error("Only the host can modify the allowlist.");
+    } else if (error.message.includes("InvalidStatus")) {
+      throw new Error("Allowlist can only be updated while the lobby is open.");
+    } else if (error.message.includes("ZeroAddress")) {
+      throw new Error("Cannot remove the zero address.");
+    } else if (error.message.includes("User rejected")) {
+      throw new Error("Transaction was cancelled by user.");
+    } else {
+      throw new Error(
+        `Failed to remove from allowlist: ${error.message ?? "Unknown error"}`,
+      );
+    }
+  }
+}
+
 /**
  * Get all public lobby IDs from the contract
  */
@@ -719,16 +1073,40 @@ export async function getPublicLobbyDetails(
     // Process results
     const lobbyDetails: PublicLobbyInfo[] = [];
 
-    results.forEach((result, index) => {
+    for (let index = 0; index < results.length; index++) {
+      const result = results[index];
       const lobbyId = lobbyIds[index];
 
       if (result.status === "success" && result.result) {
-        const [host, betAmount, participants, status, winner, totalPrize] =
-          result.result as [string, bigint, string[], number, string, bigint];
+        const [
+          host,
+          betAmount,
+          participants,
+          status,
+          winner,
+          totalPrize,
+          wagerToken,
+        ] = result.result as [
+          string,
+          bigint,
+          string[],
+          number,
+          string,
+          bigint,
+          string,
+        ];
 
-        // Check if lobby exists (host is not zero address)
         if (host !== ZERO_ADDRESS) {
-          const publicLobbyInfo: PublicLobbyInfo = {
+          const tokenSymbol =
+            wagerToken === ZERO_ADDRESS
+              ? "ETH"
+              : ((await publicClient.readContract({
+                  address: wagerToken as `0x${string}`,
+                  abi: ERC20_ABI,
+                  functionName: "symbol",
+                })) as string);
+
+          lobbyDetails.push({
             lobbyId,
             host,
             betAmount,
@@ -738,14 +1116,14 @@ export async function getPublicLobbyDetails(
             totalPrize,
             participantCount: participants.length,
             formattedBetAmount: formatEther(betAmount),
-          };
-
-          lobbyDetails.push(publicLobbyInfo);
+            wagerToken,
+            wagerSymbol: tokenSymbol,
+          });
         }
       } else {
         console.warn(`Failed to fetch lobby ${lobbyId}:`, result.error);
       }
-    });
+    }
 
     return lobbyDetails;
   } catch (error) {

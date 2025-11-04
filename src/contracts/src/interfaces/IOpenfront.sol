@@ -48,6 +48,12 @@ interface IOpenfront {
     error TransferFailed();
     /// @notice Thrown when refund to a participant fails
     error RefundFailed();
+    /// @notice Thrown when ERC20 transfer fails
+    error TokenTransferFailed();
+    /// @notice Thrown when provided amount is zero
+    error InvalidAmount();
+    /// @notice Thrown when native/erc20 payment mismatches lobby configuration
+    error InvalidPaymentAsset();
 
     // ============ Events ============
     /**
@@ -100,6 +106,14 @@ interface IOpenfront {
     event LobbyCanceled(bytes32 indexed lobbyId);
 
     /**
+     * @notice Emitted when someone sponsors additional prize funds for a lobby.
+     * @param lobbyId Unique lobby identifier.
+     * @param sponsor Address of the sponsor contributing funds.
+     * @param amount Amount of funds contributed to the prize pool.
+     */
+    event PrizePoolSponsored(bytes32 indexed lobbyId, address indexed sponsor, uint256 amount);
+
+    /**
      * @notice Emitted when the host toggles allowlist mode for a lobby.
      * @param lobbyId Unique lobby identifier.
      * @param enabled Whether allowlist enforcement is enabled.
@@ -123,7 +137,7 @@ interface IOpenfront {
      * @param betAmount Exact ETH amount each participant must provide to join.
      * @param isPublic If true, the lobby is discoverable via public listings.
      */
-    function createLobby(bytes32 lobbyId, uint256 betAmount, bool isPublic) external payable;
+    function createLobby(bytes32 lobbyId, uint256 betAmount, bool isPublic, address stakeToken) external payable;
 
     /**
      * @notice Join an existing lobby by paying the exact bet amount.
@@ -166,6 +180,14 @@ interface IOpenfront {
     function cancelLobby(bytes32 lobbyId) external;
 
     /**
+     * @notice Sponsor a lobby by contributing additional funds to the prize pool.
+     * @dev Accepts either native currency or the configured ERC20 stake token.
+     * @param lobbyId Unique identifier of the lobby to sponsor.
+     * @param amount Amount being contributed (ignored for native; msg.value is used).
+     */
+    function addToPrizePool(bytes32 lobbyId, uint256 amount) external payable;
+
+    /**
      * @notice Read a lobby's details.
      * @param lobbyId Unique identifier of the lobby.
      * @return host The lobby host address.
@@ -181,7 +203,8 @@ interface IOpenfront {
         address[] memory participants,
         uint8 status,
         address winner,
-        uint256 totalPrize
+        uint256 totalPrize,
+        address stakeToken
     );
 
     /**

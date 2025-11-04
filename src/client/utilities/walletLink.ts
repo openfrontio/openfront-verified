@@ -84,7 +84,6 @@ export async function linkWalletIfNeeded(address: string): Promise<void> {
       console.log("[walletLink] Signing via privySignMessage...");
       signature = await window.privySignMessage(message, address);
     } else {
-      // Fallback to embedded provider personal_sign
       const provider = await window.privyWallet?.getEmbeddedProvider?.();
       if (!provider) {
         console.error("❌ [walletLink] Embedded provider unavailable");

@@ -1,7 +1,7 @@
 import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useEffect } from "react";
-import { baseSepolia } from "viem/chains";
+import { megaethTestnet } from "viem/chains";
 import { WalletManager } from "../Wallet";
 import { linkWalletIfNeeded } from "../utilities/walletLink";
 
@@ -16,7 +16,7 @@ const privyConfig = {
     },
   },
   loginMethods: ["email" as const],
-  walletChains: [baseSepolia],
+  walletChains: [megaethTestnet],
   externalWallets: {
     coinbaseWallet: undefined,
     metamask: undefined,
@@ -29,8 +29,8 @@ const privyConfig = {
     accentColor: "#6366f1" as `#${string}`,
     logo: undefined,
   },
-  defaultChain: baseSepolia,
-  supportedChains: [baseSepolia],
+  defaultChain: megaethTestnet,
+  supportedChains: [megaethTestnet],
   accountLinking: {
     prompt: "never" as const,
   },
@@ -46,7 +46,6 @@ const privyConfig = {
 function WalletStateSync() {
   const { authenticated, user, login, logout, connectWallet } = usePrivy();
   const { wallets } = useWallets();
-  // Always prefer the embedded wallet in Privy wallet list
   const embedded =
     wallets.find((w) => (w as any)?.walletClientType === "privy") ?? wallets[0];
   const address = embedded?.address;
