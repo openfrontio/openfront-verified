@@ -159,21 +159,7 @@ export class WinModal extends LitElement implements Layer {
     return html``;
   }
 
-  steamWishlist(): TemplateResult {
-    return html`<p class="m-0 mb-5 text-center bg-black/30 p-2.5 rounded">
-      <a
-        href="https://store.steampowered.com/app/3560670"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="text-[#4a9eff] underline font-medium transition-colors duration-200 text-2xl hover:text-[#6db3ff]"
-      >
-        ${translateText("win_modal.wishlist")}
-      </a>
-    </p>`;
-  }
-
   async show() {
-    await this.loadPatternContent();
     this.isVisible = true;
     this.requestUpdate();
 
