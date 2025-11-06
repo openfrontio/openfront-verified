@@ -25,6 +25,10 @@ import { logger } from "./Logger";
 
 import { verifyMessage, type Address } from "viem";
 import {
+  createCoinbaseOnrampUrl,
+  isCoinbaseOnrampConfigured,
+} from "./coinbase/Onramp";
+import {
   getConfiguredGameServer,
   getDerivedServerAddress,
   getLobbyInfo,
@@ -86,6 +90,43 @@ export async function startWorker() {
   if (config.otelEnabled()) {
     initWorkerMetrics(gm);
   }
+
+  function getClientIpAddress(req: Request): string | undefined {
+    const strip = (value?: string | null): string | undefined => {
+      if (!value) return undefined;
+      const first = value.split(",")[0]?.trim();
+      if (!first) return undefined;
+      if (first.startsWith("::ffff:")) return first.slice("::ffff:".length);
+      if (first === "::1") return "127.0.0.1";
+      return first;
+    };
+
+    const trustedIp = strip(req.ip);
+    if (trustedIp) return trustedIp;
+
+    return strip(req.socket?.remoteAddress);
+  }
+
+  const OnrampRequestSchema = z
+    .object({
+      asset: z.string().trim().optional(),
+      network: z.string().trim().optional(),
+      presetFiatAmount: z
+        .preprocess((val) => {
+          if (typeof val === "number") return val;
+          if (typeof val === "string" && val.trim() !== "") {
+            const num = Number(val);
+            return Number.isFinite(num) ? num : undefined;
+          }
+          return undefined;
+        }, z.number().min(5).max(25000))
+        .optional(),
+    })
+    .transform((value) => ({
+      asset: (value.asset ?? "USDC").toUpperCase(),
+      network: (value.network ?? "base").toLowerCase(),
+      fiatAmount: value.presetFiatAmount,
+    }));
 
   const privilegeRefresher = new PrivilegeRefresher(
     config.jwtIssuer() + "/cosmetics.json",
@@ -211,6 +252,52 @@ export async function startWorker() {
     if (!pid) return res.status(401).json({ error: "unauthorized" });
     await unlinkAddress(pid);
     res.json({ success: true });
+  });
+
+  app.post("/api/onramp/session", async (req, res) => {
+    const pid = await requireAuth(req);
+    if (!pid) return res.status(401).json({ error: "unauthorized" });
+
+    if (!isCoinbaseOnrampConfigured()) {
+      return res.status(503).json({ error: "coinbase_onramp_not_configured" });
+    }
+
+    const linked = await getLinkedAddress(pid);
+    if (!linked) {
+      return res.status(400).json({ error: "wallet_not_linked" });
+    }
+
+    const parseResult = OnrampRequestSchema.safeParse(req.body ?? {});
+    if (!parseResult.success) {
+      return res.status(400).json({
+        error: "invalid_request",
+        details: parseResult.error.flatten(),
+      });
+    }
+
+    const { asset, network, fiatAmount } = parseResult.data;
+    const clientIp = getClientIpAddress(req);
+
+    try {
+      const url = await createCoinbaseOnrampUrl({
+        address: linked,
+        asset,
+        network,
+        fiatAmount,
+        clientIp,
+        partnerUserId: pid,
+      });
+      res.json({ url });
+    } catch (error) {
+      log.error("Coinbase onramp session creation failed", {
+        error: error instanceof Error ? error.message : String(error),
+        asset,
+        network,
+        pid,
+        hasClientIp: Boolean(clientIp),
+      });
+      res.status(502).json({ error: "coinbase_onramp_failed" });
+    }
   });
 
   app.post("/api/create_game/:id", async (req, res) => {
@@ -561,6 +648,7 @@ export async function startWorker() {
           ip,
           clientMsg.username,
           ws,
+          linkedAddress ?? null,
           cosmeticResult.cosmetics,
         );
 

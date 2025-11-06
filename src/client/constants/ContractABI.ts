@@ -61,6 +61,24 @@ export const CONTRACT_ABI = [
   },
   {
     type: "function",
+    name: "ejectParticipant",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+      {
+        name: "participant",
+        type: "address",
+        internalType: "address",
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "claimPrize",
     inputs: [
       {
@@ -219,6 +237,25 @@ export const CONTRACT_ABI = [
     outputs: [
       {
         name: "maxPlayers",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getMinPlayers",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+    ],
+    outputs: [
+      {
+        name: "minPlayers",
         type: "uint256",
         internalType: "uint256",
       },
@@ -588,6 +625,24 @@ export const CONTRACT_ABI = [
   },
   {
     type: "function",
+    name: "setMinPlayers",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+      {
+        name: "minPlayers",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "startGame",
     inputs: [
       {
@@ -785,6 +840,25 @@ export const CONTRACT_ABI = [
   },
   {
     type: "event",
+    name: "ParticipantEjected",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        indexed: true,
+        internalType: "bytes32",
+      },
+      {
+        name: "participant",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
     name: "PrizeClaimed",
     inputs: [
       {
@@ -840,6 +914,11 @@ export const CONTRACT_ABI = [
   },
   {
     type: "error",
+    name: "CannotEjectHost",
+    inputs: [],
+  },
+  {
+    type: "error",
     name: "GameAlreadyStarted",
     inputs: [],
   },
@@ -866,6 +945,11 @@ export const CONTRACT_ABI = [
   {
     type: "error",
     name: "InvalidPaymentAsset",
+    inputs: [],
+  },
+  {
+    type: "error",
+    name: "InvalidParticipantBounds",
     inputs: [],
   },
   {

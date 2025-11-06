@@ -6,6 +6,7 @@ import { generateID } from "../core/Util";
 import "./components/baseComponents/Modal";
 import {
   getAllPublicLobbiesWithDetails,
+  getLobbyInfo,
   joinLobby,
   type PublicLobbyInfo,
 } from "./Contract";
@@ -94,6 +95,33 @@ export class OpenGamesModal extends LitElement {
       this.error = "";
       this.joinedLobbyId = null;
       this.joiningLobbyId = lobby.lobbyId;
+      const latestInfo = await getLobbyInfo(lobby.lobbyId);
+      if (!latestInfo || !latestInfo.exists) {
+        this.error = "This tournament is no longer available.";
+        this.joiningLobbyId = null;
+        return;
+      }
+
+      this.lobbies = this.lobbies.map((existing) =>
+        existing.lobbyId === lobby.lobbyId
+          ? {
+              ...existing,
+              participantCount: latestInfo.participants.length,
+              minPlayers: latestInfo.minPlayers,
+              maxPlayers: latestInfo.maxPlayers,
+            }
+          : existing,
+      );
+
+      const lobbyFull =
+        latestInfo.maxPlayers > 0 &&
+        latestInfo.participants.length >= latestInfo.maxPlayers;
+      if (lobbyFull) {
+        this.error = "This tournament is full.";
+        this.joiningLobbyId = null;
+        return;
+      }
+
       await joinLobby({ lobbyId: lobby.lobbyId });
       // After successful stake on-chain, join the game server lobby
       this.dispatchEvent(
@@ -238,6 +266,16 @@ export class OpenGamesModal extends LitElement {
       </div>`;
     }
 
+    const lobby = this.lobbies.find((item) => item.lobbyId === lobbyId);
+    const currentPlayers = lobby?.participantCount ?? null;
+    const minPlayers = lobby?.minPlayers ?? null;
+    const maxPlayersValue =
+      lobby?.maxPlayers === undefined
+        ? null
+        : lobby.maxPlayers === 0
+          ? "Unlimited"
+          : lobby.maxPlayers;
+
     const renderDetailItem = (label: string, value: string | number | null) => {
       if (value === null || value === undefined || value === "") return null;
       return html`
@@ -263,7 +301,9 @@ export class OpenGamesModal extends LitElement {
       { label: "Mode", value: config.gameMode ?? null },
       { label: "Difficulty", value: config.difficulty ?? null },
       { label: "Bots", value: config.bots ?? null },
-      { label: "Max Players", value: config.maxPlayers ?? null },
+      { label: "Players (current)", value: currentPlayers },
+      { label: "Minimum Players", value: minPlayers },
+      { label: "Maximum Players", value: maxPlayersValue },
     ];
 
     return html`
@@ -391,6 +431,10 @@ export class OpenGamesModal extends LitElement {
                     l.formattedTotalPrize,
                     l.wagerSymbol,
                   );
+                  const normalizedMax = l.maxPlayers === 0 ? 100 : l.maxPlayers;
+                  const maxDisplay = String(normalizedMax);
+                  const lobbyFull =
+                    normalizedMax > 0 && l.participantCount >= normalizedMax;
 
                   return html` <div
                     class="option-card"
@@ -440,17 +484,29 @@ export class OpenGamesModal extends LitElement {
                             "
                               >JOINED</span
                             >`
-                          : html`<span
-                              style="
-                              background:rgba(76, 175, 80, 0.2);
-                              color:#4caf50;
-                              padding:2px 8px;
-                              border-radius:12px;
-                              font-size:11px;
-                              font-weight:600;
-                            "
-                              >OPEN</span
-                            >`}
+                          : lobbyFull
+                            ? html`<span
+                                style="
+                                background:rgba(244, 67, 54, 0.2);
+                                color:#f44336;
+                                padding:2px 8px;
+                                border-radius:12px;
+                                font-size:11px;
+                                font-weight:600;
+                              "
+                                >FULL</span
+                              >`
+                            : html`<span
+                                style="
+                                background:rgba(76, 175, 80, 0.2);
+                                color:#4caf50;
+                                padding:2px 8px;
+                                border-radius:12px;
+                                font-size:11px;
+                                font-weight:600;
+                              "
+                                >OPEN</span
+                              >`}
                       </div>
                     </div>
 
@@ -491,7 +547,10 @@ export class OpenGamesModal extends LitElement {
                         <div
                           style="color:#fff; font-size:14px; font-weight:600;"
                         >
-                          ${l.participantCount}
+                          ${l.participantCount} / ${maxDisplay}
+                        </div>
+                        <div style="color:#aaa; font-size:12px;">
+                          Min ${l.minPlayers}
                         </div>
                       </div>
 
@@ -557,14 +616,16 @@ export class OpenGamesModal extends LitElement {
                       <button
                         class="start-game-button"
                         style="flex:1;"
-                        ?disabled=${isJoining || isJoined}
+                        ?disabled=${isJoining || isJoined || lobbyFull}
                         @click=${() => this.handleJoin(l)}
                       >
                         ${isJoined
                           ? "Joined - Waiting"
-                          : isJoining
-                            ? "Confirming..."
-                            : "Join Tournament"}
+                          : lobbyFull
+                            ? "Lobby Full"
+                            : isJoining
+                              ? "Confirming..."
+                              : "Join Tournament"}
                       </button>
                     </div>
                   </div>`;

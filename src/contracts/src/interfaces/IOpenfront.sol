@@ -54,6 +54,10 @@ interface IOpenfront {
     error InvalidAmount();
     /// @notice Thrown when native/erc20 payment mismatches lobby configuration
     error InvalidPaymentAsset();
+    /// @notice Thrown when participant min/max bounds are invalid
+    error InvalidParticipantBounds();
+    /// @notice Thrown when attempting to eject the lobby host
+    error CannotEjectHost();
 
     // ============ Events ============
     /**
@@ -112,6 +116,13 @@ interface IOpenfront {
      * @param amount Amount of funds contributed to the prize pool.
      */
     event PrizePoolSponsored(bytes32 indexed lobbyId, address indexed sponsor, uint256 amount);
+
+    /**
+     * @notice Emitted when the game server ejects a participant and refunds them.
+     * @param lobbyId Unique lobby identifier.
+     * @param participant Address that was removed from the lobby.
+     */
+    event ParticipantEjected(bytes32 indexed lobbyId, address indexed participant);
 
     /**
      * @notice Emitted when the host toggles allowlist mode for a lobby.
@@ -180,6 +191,14 @@ interface IOpenfront {
     function cancelLobby(bytes32 lobbyId) external;
 
     /**
+     * @notice Eject a participant from a lobby and refund their stake.
+     * @dev Only callable by the authorized game server while the lobby is in Created status.
+     * @param lobbyId Unique identifier of the lobby.
+     * @param participant Address being removed from the lobby.
+     */
+    function ejectParticipant(bytes32 lobbyId, address participant) external;
+
+    /**
      * @notice Sponsor a lobby by contributing additional funds to the prize pool.
      * @dev Accepts either native currency or the configured ERC20 stake token.
      * @param lobbyId Unique identifier of the lobby to sponsor.
@@ -197,15 +216,18 @@ interface IOpenfront {
      * @return winner The recorded winner address if finished, otherwise zero.
      * @return totalPrize The current prize pool for the lobby.
      */
-    function getLobby(bytes32 lobbyId) external view returns (
-        address host,
-        uint256 betAmount,
-        address[] memory participants,
-        uint8 status,
-        address winner,
-        uint256 totalPrize,
-        address stakeToken
-    );
+    function getLobby(bytes32 lobbyId)
+        external
+        view
+        returns (
+            address host,
+            uint256 betAmount,
+            address[] memory participants,
+            uint8 status,
+            address winner,
+            uint256 totalPrize,
+            address stakeToken
+        );
 
     /**
      * @notice Return current number of participants for a lobby.
@@ -272,18 +294,35 @@ interface IOpenfront {
     /**
      * @notice Set a maximum participant limit for a lobby.
      * @dev Only the host can set the limit and only while in Created status.
-     *      Setting to 0 removes the cap. Must be >= current participant count.
+     *      The value must be between 1 and 100 (inclusive) and not below the
+     *      current participant count or the configured minimum.
      * @param lobbyId Unique identifier of the lobby.
-     * @param maxPlayers Maximum allowed participants (0 = unlimited).
+     * @param maxPlayers Maximum allowed participants (1-100).
      */
     function setMaxPlayers(bytes32 lobbyId, uint256 maxPlayers) external;
 
     /**
      * @notice Get the current maximum participant limit for a lobby.
      * @param lobbyId Unique identifier of the lobby.
-     * @return maxPlayers Maximum allowed participants (0 = unlimited).
+     * @return maxPlayers Maximum allowed participants (defaults to 100).
      */
     function getMaxPlayers(bytes32 lobbyId) external view returns (uint256 maxPlayers);
+
+    /**
+     * @notice Set a minimum participant requirement for a lobby to start.
+     * @dev Only the host, only while in Created status. Must be between 1 and
+     *      the configured maximum (inclusive).
+     * @param lobbyId Unique identifier of the lobby.
+     * @param minPlayers Minimum required participants to start the game.
+     */
+    function setMinPlayers(bytes32 lobbyId, uint256 minPlayers) external;
+
+    /**
+     * @notice Get the configured minimum participant requirement for a lobby.
+     * @param lobbyId Unique identifier of the lobby.
+     * @return minPlayers Minimum required participants to start the game.
+     */
+    function getMinPlayers(bytes32 lobbyId) external view returns (uint256 minPlayers);
 
     // ========= Allowlist Controls =========
 

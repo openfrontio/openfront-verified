@@ -25,8 +25,11 @@ import {
   addToAllowlist as addToAllowlistOnchain,
   cancelLobby as cancelLobbyOnchain,
   createLobby as createLobbyOnchain,
+  getLobbyInfo as getLobbyInfoOnchain,
   removeFromAllowlist as removeFromAllowlistOnchain,
   setAllowlistEnabled as setAllowlistEnabledOnchain,
+  setLobbyMaxPlayers as setMaxPlayersOnchain,
+  setLobbyMinPlayers as setMinPlayersOnchain,
   startGame as startGameOnchain,
 } from "./Contract";
 import { JoinLobbyEvent } from "./Main";
@@ -71,11 +74,18 @@ export class CreateTournamentModal extends LitElement {
   @state() private isUpdatingAllowlist: boolean = false;
   @state() private allowlistStatusMessage: string = "";
   @state() private isCancelling: boolean = false;
+  @state() private minPlayers: number = 2;
+  @state() private minPlayersInput: string = "2";
+  @state() private maxPlayers: number | null = null;
+  @state() private maxPlayersInput: string = "";
+  @state() private isUpdatingBounds: boolean = false;
+  @state() private boundsStatusMessage: string = "";
 
   private playersInterval: NodeJS.Timeout | null = null;
   // Add a new timer for debouncing bot changes
   private botsUpdateTimer: number | null = null;
   private userSettings: UserSettings = new UserSettings();
+  private boundsStatusTimer: number | null = null;
 
   connectedCallback() {
     super.connectedCallback();
@@ -760,6 +770,81 @@ export class CreateTournamentModal extends LitElement {
             )}
         </div>
 
+        <div class="participant-bounds" style="margin-top: 16px;">
+          <div
+            class="option-title"
+            style="display: flex; align-items: center; justify-content: space-between; gap: 12px;"
+          >
+            <span>Participant Limits</span>
+            <span style="font-size: 12px; color: #aaa;">
+              Current: ${this.clients.length} • Min: ${this.minPlayers}
+              • Max:
+              ${this.maxPlayersLabel}
+            </span>
+          </div>
+
+          <div
+            style="margin-top: 8px; background: rgba(255,255,255,0.04); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 12px;"
+          >
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <label style="flex: 1; font-size: 13px; color: #ddd;">
+                Minimum participants
+              </label>
+              <input
+                type="number"
+                min="1"
+                .value=${this.minPlayersInput}
+                ?disabled=${!this.lobbyId || this.isUpdatingBounds}
+                @input=${this.handleMinPlayersInput}
+                style="flex: 0 0 120px; padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.4); color: #fff;"
+              />
+              <button
+                class="option-card"
+                style="padding: 6px 14px; font-size: 13px;"
+                ?disabled=${!this.lobbyId || this.isUpdatingBounds}
+                @click=${this.applyMinPlayers}
+              >
+                Update
+              </button>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <label style="flex: 1; font-size: 13px; color: #ddd;">
+                Maximum participants
+              </label>
+              <input
+                type="number"
+                min="0"
+                .value=${this.maxPlayersInput}
+                placeholder="Unlimited"
+                ?disabled=${!this.lobbyId || this.isUpdatingBounds}
+                @input=${this.handleMaxPlayersInput}
+                style="flex: 0 0 120px; padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.4); color: #fff;"
+              />
+              <button
+                class="option-card"
+                style="padding: 6px 14px; font-size: 13px;"
+                ?disabled=${!this.lobbyId || this.isUpdatingBounds}
+                @click=${this.applyMaxPlayers}
+              >
+                Update
+              </button>
+            </div>
+
+            <div style="font-size: 11px; color: #999;">
+              Leave max blank to allow unlimited seats.
+            </div>
+
+            ${
+              this.boundsStatusMessage
+                ? html`<div style="font-size: 12px; color: #7ddc82;">
+                    ${this.boundsStatusMessage}
+                  </div>`
+                : html``
+            }
+          </div>
+        </div>
+
         <div class="allowlist-section">
           <div class="option-title" style="margin-top: 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
             <span>Allowlist Controls</span>
@@ -890,7 +975,7 @@ export class CreateTournamentModal extends LitElement {
         <div class="start-game-button-container">
           <button
             @click=${this.startGame}
-            ?disabled=${!this.lobbyId || this.clients.length < 2}
+            ?disabled=${!this.canStartGame}
             class="start-game-button"
           >
             ${
@@ -926,6 +1011,12 @@ export class CreateTournamentModal extends LitElement {
     );
     this.isCreating = false;
     this.creationSuccess = false;
+    this.minPlayers = 2;
+    this.minPlayersInput = "2";
+    this.maxPlayers = 100;
+    this.maxPlayersInput = "100";
+    this.isUpdatingBounds = false;
+    this.boundsStatusMessage = "";
     this.fetchETHPrice();
     this.modalEl?.open();
     // Start polling only after lobby is created
@@ -986,6 +1077,12 @@ export class CreateTournamentModal extends LitElement {
       clearTimeout(this.botsUpdateTimer);
       this.botsUpdateTimer = null;
     }
+    if (this.boundsStatusTimer !== null) {
+      clearTimeout(this.boundsStatusTimer);
+      this.boundsStatusTimer = null;
+    }
+    this.boundsStatusMessage = "";
+    this.isUpdatingBounds = false;
   }
 
   private async handleRandomMapToggle() {
@@ -1181,9 +1278,51 @@ export class CreateTournamentModal extends LitElement {
     return maps[randIdx] as GameMapType;
   }
 
+  private get canStartGame(): boolean {
+    if (!this.lobbyId) {
+      return false;
+    }
+    const participants = this.clients.length;
+    if (participants < this.minPlayers) {
+      return false;
+    }
+    if (this.maxPlayers !== null && this.maxPlayers > 0) {
+      if (participants > this.maxPlayers) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private get maxPlayersLabel(): string {
+    const value = this.maxPlayers;
+    if (value === null || value === 0) {
+      return "100";
+    }
+    return String(value);
+  }
+
   private async startGame() {
     if (this.useRandomMap) {
       this.selectedMap = this.getRandomMap();
+    }
+
+    const participantCount = this.clients.length;
+    const requiredMin = this.minPlayers;
+    if (participantCount < requiredMin) {
+      alert(
+        `Need at least ${requiredMin} participant${requiredMin === 1 ? "" : "s"} before starting.`,
+      );
+      return;
+    }
+
+    if (this.maxPlayers !== null && this.maxPlayers > 0) {
+      if (participantCount > this.maxPlayers) {
+        alert(
+          `Current participant count (${participantCount}) exceeds the max limit of ${this.maxPlayers}. Adjust the limit or remove players before starting.`,
+        );
+        return;
+      }
     }
 
     await this.putGameConfig();
@@ -1254,6 +1393,106 @@ export class CreateTournamentModal extends LitElement {
     );
   }
 
+  private async syncParticipantBounds(): Promise<void> {
+    if (!this.lobbyId) {
+      return;
+    }
+
+    try {
+      const info = await getLobbyInfoOnchain(this.lobbyId);
+      if (!info || !info.exists) {
+        return;
+      }
+
+      this.minPlayers = info.minPlayers;
+      this.minPlayersInput = info.minPlayers.toString();
+
+      const normalizedMax = info.maxPlayers === 0 ? 100 : info.maxPlayers;
+      this.maxPlayers = normalizedMax;
+      this.maxPlayersInput = normalizedMax.toString();
+    } catch (error) {
+      console.error("Failed to sync participant bounds:", error);
+    }
+  }
+
+  private setBoundsStatus(message: string): void {
+    this.boundsStatusMessage = message;
+    if (this.boundsStatusTimer !== null) {
+      clearTimeout(this.boundsStatusTimer);
+    }
+    this.boundsStatusTimer = window.setTimeout(() => {
+      this.boundsStatusMessage = "";
+      this.boundsStatusTimer = null;
+    }, 3000);
+  }
+
+  private handleMinPlayersInput(event: Event): void {
+    this.minPlayersInput = (event.target as HTMLInputElement).value;
+  }
+
+  private handleMaxPlayersInput(event: Event): void {
+    this.maxPlayersInput = (event.target as HTMLInputElement).value;
+  }
+
+  private async applyMinPlayers(): Promise<void> {
+    if (!this.lobbyId || this.isUpdatingBounds) {
+      return;
+    }
+
+    const parsed = Number(this.minPlayersInput.trim());
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+      alert("Minimum participants must be an integer between 1 and 100.");
+      return;
+    }
+
+    try {
+      this.isUpdatingBounds = true;
+      await setMinPlayersOnchain({
+        lobbyId: this.lobbyId,
+        minPlayers: parsed,
+      });
+      await this.syncParticipantBounds();
+      this.setBoundsStatus(`Minimum participants set to ${parsed}.`);
+    } catch (error: any) {
+      console.error("Failed to set min players:", error);
+      alert(error?.message ?? "Failed to set minimum participants");
+    } finally {
+      this.isUpdatingBounds = false;
+    }
+  }
+
+  private async applyMaxPlayers(): Promise<void> {
+    if (!this.lobbyId || this.isUpdatingBounds) {
+      return;
+    }
+
+    const trimmed = this.maxPlayersInput.trim();
+    if (trimmed === "") {
+      alert("Enter a maximum participants value between 1 and 100.");
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+      alert("Maximum participants must be an integer between 1 and 100.");
+      return;
+    }
+
+    try {
+      this.isUpdatingBounds = true;
+      await setMaxPlayersOnchain({
+        lobbyId: this.lobbyId,
+        maxPlayers: parsed,
+      });
+      await this.syncParticipantBounds();
+      this.setBoundsStatus(`Maximum participants set to ${parsed}.`);
+    } catch (error: any) {
+      console.error("Failed to set max players:", error);
+      alert(error?.message ?? "Failed to set maximum participants");
+    } finally {
+      this.isUpdatingBounds = false;
+    }
+  }
+
   private async createOnchainAndServerLobby(): Promise<void> {
     const amt = (this.betAmount ?? "").trim();
     if (!amt || isNaN(Number(amt)) || Number(amt) < 0) {
@@ -1271,6 +1510,8 @@ export class CreateTournamentModal extends LitElement {
       betAmount: amt,
       lobbyVisibility: this.lobbyVisibility,
     });
+
+    await this.syncParticipantBounds();
 
     // 2) Create corresponding lobby on the game server with same ID
     const config = await getServerConfigFromClient();

@@ -1,20 +1,47 @@
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { useEffect, useState } from "react";
-import { createPublicClient, formatEther, http } from "viem";
+import { useEffect, useMemo, useState } from "react";
+import {
+  createPublicClient,
+  formatEther,
+  http,
+  isAddress,
+  parseEther,
+  parseUnits,
+} from "viem";
 import { megaethTestnet } from "viem/chains";
-import { getTokenBalances, requestFaucetTokens } from "../Contract";
+import {
+  getTokenBalances,
+  requestFaucetTokens,
+  withdrawAsset,
+} from "../Contract";
+import { getAuthHeader } from "../jwt";
+import { getPersistentID } from "../Main";
 
 export function WalletButton() {
-  const { authenticated, user, login, logout, ready } = usePrivy();
+  const privy = usePrivy();
+  const { authenticated, user, login, logout, ready } = privy;
   const { wallets } = useWallets();
   const [showDropdown, setShowDropdown] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isFaucetPending, setIsFaucetPending] = useState(false);
   const [faucetMessage, setFaucetMessage] = useState<string | null>(null);
+  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
+  const [withdrawAssetType, setWithdrawAssetType] = useState<"ETH" | "fUSD">(
+    "ETH",
+  );
+  const [withdrawAmount, setWithdrawAmount] = useState<string>("");
+  const [withdrawRecipient, setWithdrawRecipient] = useState<string>("");
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
+  const [withdrawSuccess, setWithdrawSuccess] = useState<string | null>(null);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [fundMessage, setFundMessage] = useState<string | null>(null);
+  const [isFunding, setIsFunding] = useState(false);
 
   const address = wallets[0]?.address;
   const [balanceWei, setBalanceWei] = useState<bigint | undefined>(undefined);
   const [fakeUsdBalance, setFakeUsdBalance] = useState<string>("—");
+  const [fakeUsdBalanceRaw, setFakeUsdBalanceRaw] = useState<bigint>(0n);
+  const [fakeUsdDecimals, setFakeUsdDecimals] = useState<number>(18);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
@@ -29,6 +56,7 @@ export function WalletButton() {
           if (!cancelled) {
             setBalanceWei(undefined);
             setFakeUsdBalance("—");
+            setFakeUsdBalanceRaw(0n);
           }
           return;
         }
@@ -40,6 +68,12 @@ export function WalletButton() {
         const fake = balances.find((b) => b.symbol === "fUSD");
         if (!cancelled && fake) {
           setFakeUsdBalance(fake.balance);
+          setFakeUsdBalanceRaw(fake.rawBalance);
+          setFakeUsdDecimals(fake.decimals);
+        } else if (!cancelled) {
+          setFakeUsdBalance("—");
+          setFakeUsdBalanceRaw(0n);
+          setFakeUsdDecimals(18);
         }
       } catch (_e) {
         // Don't clear balances on error; keep last known values
@@ -100,11 +134,161 @@ export function WalletButton() {
     }
   };
 
+  const handleFundWallet = async () => {
+    if (isFunding) return;
+    setFundMessage(null);
+
+    if (!address) {
+      setFundMessage("Connect your wallet before funding.");
+      return;
+    }
+
+    const authHeader = (() => {
+      const bearer = getAuthHeader();
+      if (bearer) return bearer;
+      const persistent = getPersistentID();
+      return persistent ? `Bearer ${persistent}` : "";
+    })();
+    if (!authHeader) {
+      setFundMessage("Log in first so we can authorize your onramp request.");
+      return;
+    }
+
+    try {
+      setIsFunding(true);
+      const response = await fetch("/api/onramp/session", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: authHeader,
+        },
+        body: JSON.stringify({
+          asset: "USDC",
+          network: "base",
+          presetFiatAmount: 50,
+        }),
+      });
+
+      if (response.status === 503) {
+        setFundMessage(
+          "Onramp server credentials missing. Ask the host to configure Coinbase CDP keys.",
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(
+          text || "Failed to start Coinbase Onramp session. Check API keys.",
+        );
+      }
+
+      const json = (await response.json()) as { url?: string };
+      if (!json?.url) {
+        throw new Error("Server did not return an onramp URL.");
+      }
+
+      window.open(json.url, "_blank", "noopener,noreferrer");
+      setFundMessage(
+        "Coinbase Onramp opened. Complete the flow in the new tab.",
+      );
+    } catch (error: any) {
+      console.error("Onramp launch failed:", error);
+      setFundMessage(
+        error?.message ??
+          "Unable to launch Coinbase Onramp. Please try again later.",
+      );
+    } finally {
+      setIsFunding(false);
+    }
+  };
+
   const formatAddress = (addr: string) =>
     `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
   const formatBalance = (wei?: bigint) =>
     wei === undefined ? "—" : parseFloat(formatEther(wei)).toFixed(4);
+
+  const availableToWithdraw = useMemo(() => {
+    if (withdrawAssetType === "ETH") {
+      return balanceWei ?? 0n;
+    }
+    return fakeUsdBalanceRaw ?? 0n;
+  }, [withdrawAssetType, balanceWei, fakeUsdBalanceRaw]);
+
+  const formattedAvailable = useMemo(() => {
+    if (withdrawAssetType === "ETH") {
+      return formatBalance(balanceWei);
+    }
+    return fakeUsdBalance;
+  }, [withdrawAssetType, fakeUsdBalance, balanceWei]);
+
+  const resetWithdrawState = () => {
+    setWithdrawAmount("");
+    setWithdrawRecipient("");
+    setWithdrawError(null);
+    setWithdrawSuccess(null);
+    setIsWithdrawing(false);
+  };
+
+  const closeWithdrawModal = () => {
+    resetWithdrawState();
+    setIsWithdrawOpen(false);
+  };
+
+  const handleWithdraw = async () => {
+    if (isWithdrawing) return;
+    setWithdrawError(null);
+    setWithdrawSuccess(null);
+
+    if (!withdrawAmount.trim()) {
+      setWithdrawError("Enter an amount to withdraw.");
+      return;
+    }
+
+    if (!withdrawRecipient.trim()) {
+      setWithdrawError("Enter a destination address.");
+      return;
+    }
+
+    if (!isAddress(withdrawRecipient)) {
+      setWithdrawError("Destination address is invalid.");
+      return;
+    }
+
+    try {
+      let parsedAmount: bigint;
+      if (withdrawAssetType === "ETH") {
+        parsedAmount = parseEther(withdrawAmount);
+      } else {
+        parsedAmount = parseUnits(withdrawAmount, fakeUsdDecimals);
+      }
+
+      if (parsedAmount <= 0n) {
+        setWithdrawError("Amount must be greater than zero.");
+        return;
+      }
+
+      if (parsedAmount > availableToWithdraw) {
+        setWithdrawError("Amount exceeds available balance.");
+        return;
+      }
+
+      setIsWithdrawing(true);
+      const tx = await withdrawAsset({
+        asset: withdrawAssetType,
+        recipient: withdrawRecipient as `0x${string}`,
+        amount: withdrawAmount,
+      });
+      setWithdrawSuccess(`Withdrawal submitted. Tx: ${tx.slice(0, 12)}…`);
+      setTimeout(() => setRefreshTrigger((t) => t + 1), 3000);
+    } catch (error: any) {
+      console.error("Withdrawal failed:", error);
+      setWithdrawError(error?.message ?? "Withdrawal failed. Try again.");
+    } finally {
+      setIsWithdrawing(false);
+    }
+  };
 
   if (!ready) {
     return (
@@ -274,6 +458,55 @@ export function WalletButton() {
               {copied ? "Copied!" : "Copy Address"}
             </button>
 
+            <button
+              className="logout-button fund-button"
+              onClick={handleFundWallet}
+              disabled={isFunding}
+            >
+              <svg
+                className="logout-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M12 4L12 20M12 20L6 14M12 20L18 14"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              {isFunding ? "Launching Onramp…" : "Fund Wallet (Base)"}
+            </button>
+
+            {fundMessage && (
+              <div className="dropdown-item fund-message">
+                <span className="item-value">{fundMessage}</span>
+              </div>
+            )}
+
+            <button
+              className="logout-button withdraw-trigger"
+              onClick={() => setIsWithdrawOpen(true)}
+            >
+              <svg
+                className="logout-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M12 5V19M12 19L6 13M12 19L18 13"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              Withdraw
+            </button>
+
             <div className="dropdown-divider"></div>
 
             <button className="logout-button" onClick={handleLogout}>
@@ -290,6 +523,93 @@ export function WalletButton() {
               </svg>
               Logout
             </button>
+          </div>
+        </div>
+      )}
+      {isWithdrawOpen && (
+        <div className="withdraw-modal">
+          <div className="withdraw-modal__dialog">
+            <div className="withdraw-modal__header">
+              <h4>Withdraw Funds</h4>
+              <button
+                className="withdraw-modal__close"
+                onClick={closeWithdrawModal}
+                aria-label="Close withdraw modal"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="withdraw-modal__content">
+              <p className="withdraw-modal__warning">
+                ⚠️ Withdrawals execute on the MegaETH Testnet. Double-check the
+                recipient address and network in your wallet before confirming.
+              </p>
+
+              <label className="withdraw-modal__label">
+                Asset
+                <select
+                  value={withdrawAssetType}
+                  onChange={(e) =>
+                    setWithdrawAssetType(e.target.value as "ETH" | "fUSD")
+                  }
+                  className="withdraw-modal__select"
+                >
+                  <option value="ETH">ETH (native)</option>
+                  <option value="fUSD">fUSD (ERC-20)</option>
+                </select>
+              </label>
+
+              <label className="withdraw-modal__label">
+                Amount
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={withdrawAmount}
+                  onChange={(e) => setWithdrawAmount(e.target.value)}
+                  placeholder="0.0"
+                  className="withdraw-modal__input"
+                />
+                <span className="withdraw-modal__hint">
+                  Available: {formattedAvailable} {withdrawAssetType}
+                </span>
+              </label>
+
+              <label className="withdraw-modal__label">
+                Destination Address
+                <input
+                  type="text"
+                  value={withdrawRecipient}
+                  onChange={(e) => setWithdrawRecipient(e.target.value)}
+                  placeholder="0x..."
+                  className="withdraw-modal__input"
+                />
+              </label>
+
+              {withdrawError && (
+                <div className="withdraw-modal__error">{withdrawError}</div>
+              )}
+              {withdrawSuccess && (
+                <div className="withdraw-modal__success">{withdrawSuccess}</div>
+              )}
+
+              <div className="withdraw-modal__actions">
+                <button
+                  className="withdraw-cancel"
+                  onClick={closeWithdrawModal}
+                  disabled={isWithdrawing}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="withdraw-confirm"
+                  onClick={handleWithdraw}
+                  disabled={isWithdrawing}
+                >
+                  {isWithdrawing ? "Withdrawing…" : "Confirm Withdraw"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

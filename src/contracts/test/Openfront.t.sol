@@ -59,7 +59,15 @@ contract OpenfrontTest is Test {
         openfront.createLobby{value: 0}(idToken, 0, true, address(token));
         vm.stopPrank();
 
-        (, uint256 betAmountToken, address[] memory participantsToken,, address winnerToken, uint256 totalPrizeToken, address stakeTokenAddress) = openfront.getLobby(idToken);
+        (
+            ,
+            uint256 betAmountToken,
+            address[] memory participantsToken,
+            ,
+            address winnerToken,
+            uint256 totalPrizeToken,
+            address stakeTokenAddress
+        ) = openfront.getLobby(idToken);
         assertEq(betAmountToken, 0);
         assertEq(participantsToken.length, 1);
         assertEq(participantsToken[0], host);
@@ -86,6 +94,8 @@ contract OpenfrontTest is Test {
         vm.prank(host);
         openfront.createLobby{value: bet}(id, bet, true, address(0));
 
+        assertEq(openfront.getMaxPlayers(id), 100);
+
         // Set cap to 2 (host + one more)
         vm.prank(host);
         openfront.setMaxPlayers(id, 2);
@@ -99,9 +109,9 @@ contract OpenfrontTest is Test {
         vm.expectRevert(IOpenfront.LobbyFull.selector);
         openfront.joinLobby{value: bet}(id);
 
-        // Remove cap
+        // Increase cap to allow another participant
         vm.prank(host);
-        openfront.setMaxPlayers(id, 0);
+        openfront.setMaxPlayers(id, 3);
 
         // Now join succeeds
         vm.prank(player2);
@@ -193,6 +203,143 @@ contract OpenfrontTest is Test {
 
         vm.prank(host);
         openfront.startGame(id);
+    }
+
+    function testParticipantBoundsConfiguration() public {
+        bytes32 id = keccak256("lobby-bounds");
+        vm.prank(host);
+        openfront.createLobby{value: bet}(id, bet, true, address(0));
+
+        assertEq(openfront.getMaxPlayers(id), 100);
+
+        // Default min should be 2
+        assertEq(openfront.getMinPlayers(id), 2);
+
+        // Host can raise min, but not set to zero
+        vm.prank(host);
+        vm.expectRevert(IOpenfront.InvalidParticipantBounds.selector);
+        openfront.setMinPlayers(id, 0);
+
+        vm.prank(host);
+        openfront.setMinPlayers(id, 3);
+        assertEq(openfront.getMinPlayers(id), 3);
+
+        // Max cannot be set to zero or exceed limit
+        vm.prank(host);
+        vm.expectRevert(IOpenfront.InvalidParticipantBounds.selector);
+        openfront.setMaxPlayers(id, 0);
+
+        vm.prank(host);
+        vm.expectRevert(IOpenfront.InvalidParticipantBounds.selector);
+        openfront.setMaxPlayers(id, 101);
+
+        // Cap must remain >= min
+        vm.prank(host);
+        vm.expectRevert(IOpenfront.InvalidParticipantBounds.selector);
+        openfront.setMaxPlayers(id, 2);
+
+        // Increasing cap then lowering min is allowed
+        vm.prank(host);
+        openfront.setMaxPlayers(id, 5);
+        vm.prank(host);
+        openfront.setMinPlayers(id, 2);
+        assertEq(openfront.getMinPlayers(id), 2);
+
+        // Max cannot be reduced below min
+        vm.prank(host);
+        vm.expectRevert(IOpenfront.InvalidParticipantBounds.selector);
+        openfront.setMaxPlayers(id, 1);
+
+        // Min cannot exceed limit
+        vm.prank(host);
+        vm.expectRevert(IOpenfront.InvalidParticipantBounds.selector);
+        openfront.setMinPlayers(id, 101);
+    }
+
+    function testStartGameRespectsConfiguredMin() public {
+        bytes32 id = keccak256("lobby-bounds-start");
+        vm.prank(host);
+        openfront.createLobby{value: bet}(id, bet, true, address(0));
+
+        vm.prank(host);
+        openfront.setMinPlayers(id, 3);
+
+        vm.prank(player1);
+        openfront.joinLobby{value: bet}(id);
+
+        // Only two participants (host + player1)
+        vm.prank(host);
+        vm.expectRevert(IOpenfront.TooFewPlayers.selector);
+        openfront.startGame(id);
+
+        vm.prank(player2);
+        openfront.joinLobby{value: bet}(id);
+
+        vm.prank(host);
+        openfront.startGame(id);
+    }
+
+    function testEjectParticipantRefundsNative() public {
+        bytes32 id = keccak256("lobby-eject-native");
+        vm.prank(host);
+        openfront.createLobby{value: bet}(id, bet, true, address(0));
+
+        vm.prank(player1);
+        openfront.joinLobby{value: bet}(id);
+        uint256 balanceAfterJoin = player1.balance;
+
+        vm.prank(server);
+        openfront.ejectParticipant(id, player1);
+
+        assertEq(player1.balance, balanceAfterJoin + bet);
+        assertEq(openfront.getParticipantCount(id), 1);
+    }
+
+    function testEjectParticipantRefundsERC20() public {
+        bytes32 id = keccak256("lobby-eject-erc20");
+        vm.startPrank(host);
+        token.approve(address(openfront), bet);
+        openfront.createLobby{value: 0}(id, bet, true, address(token));
+        vm.stopPrank();
+
+        vm.startPrank(player1);
+        token.approve(address(openfront), bet);
+        openfront.joinLobby{value: 0}(id);
+        vm.stopPrank();
+
+        uint256 balanceAfterJoin = token.balanceOf(player1);
+
+        vm.prank(server);
+        openfront.ejectParticipant(id, player1);
+
+        assertEq(token.balanceOf(player1), balanceAfterJoin + bet);
+        assertEq(openfront.getParticipantCount(id), 1);
+    }
+
+    function testEjectParticipantOnlyServerAndHostProtected() public {
+        bytes32 id = keccak256("lobby-eject-auth");
+        vm.prank(host);
+        openfront.createLobby{value: bet}(id, bet, true, address(0));
+
+        vm.prank(player1);
+        openfront.joinLobby{value: bet}(id);
+
+        // Only game server can call
+        vm.prank(attacker);
+        vm.expectRevert(IOpenfront.NotGameServer.selector);
+        openfront.ejectParticipant(id, player1);
+
+        // Cannot eject host
+        vm.prank(server);
+        vm.expectRevert(IOpenfront.CannotEjectHost.selector);
+        openfront.ejectParticipant(id, host);
+
+        // Cannot eject after start
+        vm.prank(host);
+        openfront.startGame(id);
+        vm.prank(server);
+        vm.expectRevert(IOpenfront.InvalidStatus.selector);
+        openfront.ejectParticipant(id, player1);
     }
 
     function testDeclareWinner_FlowAndChecks() public {
@@ -414,7 +561,7 @@ contract OpenfrontTest is Test {
         uint256 before = player1.balance;
         vm.prank(player1);
         openfront.addToPrizePool{value: bet}(id, bet);
-        (, , , , , uint256 totalPrizeNative,) = openfront.getLobby(id);
+        (,,,,, uint256 totalPrizeNative,) = openfront.getLobby(id);
         assertEq(totalPrizeNative, bet * 2);
         assertEq(player1.balance, before - bet);
     }
@@ -431,7 +578,7 @@ contract OpenfrontTest is Test {
         openfront.addToPrizePool(id, bet);
         vm.stopPrank();
 
-        (, , , , , uint256 totalPrize,) = openfront.getLobby(id);
+        (,,,,, uint256 totalPrize,) = openfront.getLobby(id);
         assertEq(totalPrize, bet * 2);
     }
 
@@ -449,7 +596,7 @@ contract OpenfrontTest is Test {
         openfront.addToPrizePool(id, bet);
         vm.stopPrank();
 
-        (, , address[] memory participants,, , ,) = openfront.getLobby(id);
+        (,, address[] memory participants,,,,) = openfront.getLobby(id);
         assertEq(participants.length, 2);
         assertEq(participants[0], host);
         assertEq(participants[1], player1);

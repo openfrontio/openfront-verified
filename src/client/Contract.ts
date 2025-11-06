@@ -7,6 +7,7 @@ import {
   formatUnits,
   getAddress,
   http,
+  parseEther,
   parseGwei,
   parseUnits,
   type Hash,
@@ -203,11 +204,25 @@ export async function requestFaucetTokens(): Promise<Hash> {
   });
 }
 
-export async function getTokenBalances(account: `0x${string}`) {
-  const balances: { symbol: string; balance: string }[] = [];
+export type TokenBalanceInfo = {
+  symbol: string;
+  balance: string;
+  rawBalance: bigint;
+  decimals: number;
+};
+
+export async function getTokenBalances(
+  account: `0x${string}`,
+): Promise<TokenBalanceInfo[]> {
+  const balances: TokenBalanceInfo[] = [];
 
   const nativeBalance = await publicClient.getBalance({ address: account });
-  balances.push({ symbol: "ETH", balance: formatEther(nativeBalance) });
+  balances.push({
+    symbol: "ETH",
+    balance: formatEther(nativeBalance),
+    rawBalance: nativeBalance,
+    decimals: 18,
+  });
 
   try {
     const [fakeBalance, fakeSymbol] = await Promise.all([
@@ -227,16 +242,85 @@ export async function getTokenBalances(account: `0x${string}`) {
     balances.push({
       symbol: fakeSymbol,
       balance: formatUnits(fakeBalance, 18),
+      rawBalance: fakeBalance,
+      decimals: 18,
     });
   } catch (error) {
     console.warn("Failed to fetch fUSD balance:", error);
     balances.push({
       symbol: "fUSD",
       balance: "—",
+      rawBalance: 0n,
+      decimals: 18,
     });
   }
 
   return balances;
+}
+
+async function sendNativeTransaction(to: `0x${string}`, value: bigint) {
+  const walletManager = WalletManager.getInstance();
+  const account = walletManager.address as `0x${string}` | undefined;
+  if (!account) throw new Error("No connected wallet");
+  const client = await getWalletClient();
+
+  const nonce = await publicClient.getTransactionCount({
+    address: account,
+    blockTag: "pending",
+  });
+
+  const request: any = {
+    account,
+    chain: megaethTestnet,
+    to,
+    value,
+    nonce,
+    gas: GAS_LIMIT,
+    data: "0x",
+    maxFeePerGas: MAX_FEE_PER_GAS,
+    maxPriorityFeePerGas: MAX_PRIORITY_FEE_PER_GAS,
+  };
+
+  const serializedTransaction = await client.signTransaction(request);
+
+  return await client.sendRawTransaction({
+    serializedTransaction,
+    sponsor: true,
+  });
+}
+
+export async function withdrawAsset(params: {
+  asset: "ETH" | "fUSD";
+  recipient: `0x${string}`;
+  amount: string;
+}): Promise<Hash> {
+  const { asset, recipient, amount } = params;
+
+  if (!amount || Number(amount) <= 0) {
+    throw new Error("Amount must be greater than zero.");
+  }
+
+  const normalizedRecipient = getAddress(recipient);
+
+  if (asset === "ETH") {
+    const weiAmount = parseEther(amount);
+    if (weiAmount <= 0n) {
+      throw new Error("Amount must be greater than zero.");
+    }
+    return await sendNativeTransaction(normalizedRecipient, weiAmount);
+  }
+
+  const tokenAmount = parseUnits(amount, 18);
+  if (tokenAmount <= 0n) {
+    throw new Error("Amount must be greater than zero.");
+  }
+
+  return await wagmiWrite({
+    address: FAKE_USD_TOKEN_ADDRESS,
+    abi: ERC20_ABI,
+    functionName: "transfer",
+    args: [normalizedRecipient, tokenAmount],
+  });
 }
 
 export function getFakeUsdFromWei(wei: bigint): string {
@@ -536,6 +620,8 @@ export interface LobbyInfo {
   isNative: boolean;
   allowlistEnabled: boolean;
   exists: boolean;
+  minPlayers: number;
+  maxPlayers: number;
 }
 
 export interface PublicLobbyInfo {
@@ -554,6 +640,8 @@ export interface PublicLobbyInfo {
   wagerDecimals: number;
   isNative: boolean;
   allowlistEnabled: boolean;
+  minPlayers: number;
+  maxPlayers: number;
 }
 
 export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
@@ -580,12 +668,26 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
     const tokenMeta = await getTokenMetadata(wagerToken as `0x${string}`);
     const formattedBet = formatUnits(betAmount, tokenMeta.decimals);
     const formattedPrize = formatUnits(totalPrize, tokenMeta.decimals);
-    const allowlistEnabled = (await wagmiRead({
-      address: CONTRACT_ADDRESS,
-      abi: CONTRACT_ABI,
-      functionName: "isAllowlistEnabled",
-      args: [lobbyIdBytes32],
-    })) as boolean;
+    const [allowlistEnabled, maxPlayersRaw, minPlayersRaw] = await Promise.all([
+      wagmiRead({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: "isAllowlistEnabled",
+        args: [lobbyIdBytes32],
+      }) as Promise<boolean>,
+      wagmiRead({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: "getMaxPlayers",
+        args: [lobbyIdBytes32],
+      }) as Promise<bigint>,
+      wagmiRead({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: "getMinPlayers",
+        args: [lobbyIdBytes32],
+      }) as Promise<bigint>,
+    ]);
 
     const exists = host !== ZERO_ADDRESS;
 
@@ -602,6 +704,8 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
       isNative: tokenMeta.isNative,
       allowlistEnabled,
       exists,
+      minPlayers: Number(minPlayersRaw),
+      maxPlayers: Number(maxPlayersRaw),
     };
 
     console.log("Lobby info result:", {
@@ -1239,6 +1343,102 @@ export async function setAllowlistEnabled(
   }
 }
 
+export async function setLobbyMaxPlayers(params: {
+  lobbyId: string;
+  maxPlayers: number;
+}): Promise<Hash> {
+  const { lobbyId, maxPlayers } = params;
+  if (!Number.isInteger(maxPlayers) || maxPlayers < 1 || maxPlayers > 100) {
+    throw new Error("Max participants must be an integer between 1 and 100.");
+  }
+
+  const walletManager = WalletManager.getInstance();
+  if (!walletManager.authenticated || !walletManager.address) {
+    throw new Error(
+      "Please connect your wallet using the Privy wallet button.",
+    );
+  }
+
+  const lobbyIdBytes32 = stringToBytes32(lobbyId);
+
+  try {
+    return await wagmiWrite({
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "setMaxPlayers",
+      args: [lobbyIdBytes32, BigInt(maxPlayers)],
+    });
+  } catch (error: any) {
+    console.error("Failed to update max players:", error);
+
+    if (error.message.includes("NotHost")) {
+      throw new Error("Only the host can modify participant limits.");
+    } else if (error.message.includes("InvalidStatus")) {
+      throw new Error(
+        "Participant limits can only be updated while the lobby is open.",
+      );
+    } else if (error.message.includes("InvalidParticipantBounds")) {
+      throw new Error(
+        "Max players must be between 1 and 100, and at least the current minimum and participant count.",
+      );
+    } else if (error.message.includes("User rejected")) {
+      throw new Error("Transaction was cancelled by user.");
+    } else {
+      throw new Error(
+        `Failed to update max players: ${error.message ?? "Unknown error"}`,
+      );
+    }
+  }
+}
+
+export async function setLobbyMinPlayers(params: {
+  lobbyId: string;
+  minPlayers: number;
+}): Promise<Hash> {
+  const { lobbyId, minPlayers } = params;
+  if (!Number.isInteger(minPlayers) || minPlayers < 1 || minPlayers > 100) {
+    throw new Error("Minimum players must be an integer between 1 and 100.");
+  }
+
+  const walletManager = WalletManager.getInstance();
+  if (!walletManager.authenticated || !walletManager.address) {
+    throw new Error(
+      "Please connect your wallet using the Privy wallet button.",
+    );
+  }
+
+  const lobbyIdBytes32 = stringToBytes32(lobbyId);
+
+  try {
+    return await wagmiWrite({
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "setMinPlayers",
+      args: [lobbyIdBytes32, BigInt(minPlayers)],
+    });
+  } catch (error: any) {
+    console.error("Failed to update min players:", error);
+
+    if (error.message.includes("NotHost")) {
+      throw new Error("Only the host can modify participant limits.");
+    } else if (error.message.includes("InvalidStatus")) {
+      throw new Error(
+        "Participant limits can only be updated while the lobby is open.",
+      );
+    } else if (error.message.includes("InvalidParticipantBounds")) {
+      throw new Error(
+        "Minimum players must not exceed the max players setting or 100.",
+      );
+    } else if (error.message.includes("User rejected")) {
+      throw new Error("Transaction was cancelled by user.");
+    } else {
+      throw new Error(
+        `Failed to update min players: ${error.message ?? "Unknown error"}`,
+      );
+    }
+  }
+}
+
 export async function addToAllowlist(
   params: AddToAllowlistParams,
 ): Promise<Hash> {
@@ -1424,15 +1624,28 @@ export async function getPublicLobbyDetails(
         ];
 
         if (host !== ZERO_ADDRESS) {
-          const [tokenMeta, allowlistEnabled] = await Promise.all([
-            getTokenMetadata(wagerToken as `0x${string}`),
-            publicClient.readContract({
-              address: CONTRACT_ADDRESS,
-              abi: CONTRACT_ABI,
-              functionName: "isAllowlistEnabled",
-              args: [stringToBytes32(lobbyId)],
-            }) as Promise<boolean>,
-          ]);
+          const [tokenMeta, allowlistEnabled, maxPlayersRaw, minPlayersRaw] =
+            await Promise.all([
+              getTokenMetadata(wagerToken as `0x${string}`),
+              publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: "isAllowlistEnabled",
+                args: [stringToBytes32(lobbyId)],
+              }) as Promise<boolean>,
+              publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: "getMaxPlayers",
+                args: [stringToBytes32(lobbyId)],
+              }) as Promise<bigint>,
+              publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: "getMinPlayers",
+                args: [stringToBytes32(lobbyId)],
+              }) as Promise<bigint>,
+            ]);
           const formattedBet = formatUnits(betAmount, tokenMeta.decimals);
           const formattedPrize = formatUnits(totalPrize, tokenMeta.decimals);
 
@@ -1452,6 +1665,8 @@ export async function getPublicLobbyDetails(
             wagerDecimals: tokenMeta.decimals,
             isNative: tokenMeta.isNative,
             allowlistEnabled,
+            minPlayers: Number(minPlayersRaw),
+            maxPlayers: Number(maxPlayersRaw),
           });
         }
       } else {

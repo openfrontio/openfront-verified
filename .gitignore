@@ -18,3 +18,4 @@ resources/.DS_Store
 .clinic/
 CLAUDE.md
 .vercel
+.env.mainnet

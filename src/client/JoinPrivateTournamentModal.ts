@@ -43,6 +43,7 @@ export class JoinPrivateTournamentModal extends LitElement {
   @state() private allowlistAllowed: boolean | null = null;
   @state() private allowlistStatusMessage = "";
   @state() private isWalletConnected = false;
+  @state() private lobbyFull = false;
 
   private pollInterval: number | null = null;
   private serverConfig: ServerConfig | null = null;
@@ -132,6 +133,7 @@ export class JoinPrivateTournamentModal extends LitElement {
     this.details = null;
     this.joined = false;
     this.waitingRoomClients = [];
+    this.lobbyFull = false;
     this.stopWaitingRoomPolling();
 
     try {
@@ -156,6 +158,10 @@ export class JoinPrivateTournamentModal extends LitElement {
       }
 
       this.details = { lobbyInfo, gameInfo };
+      const normalizedMax =
+        lobbyInfo.maxPlayers === 0 ? 100 : lobbyInfo.maxPlayers;
+      this.lobbyFull =
+        normalizedMax > 0 && lobbyInfo.participants.length >= normalizedMax;
       this.waitingRoomClients = gameInfo.clients ?? [];
       await this.evaluateAllowlistStatus(lobbyId, lobbyInfo);
     } catch (err: any) {
@@ -211,6 +217,35 @@ export class JoinPrivateTournamentModal extends LitElement {
             "Allowlist is enabled for this tournament. Your wallet is not allowlisted.";
           return;
         }
+      }
+
+      const latestInfo = await getLobbyInfo(lobbyId);
+      if (!latestInfo || !latestInfo.exists) {
+        this.joining = false;
+        this.error = translateText("private_lobby.not_found");
+        return;
+      }
+      const normalizedMax =
+        latestInfo.maxPlayers === 0 ? 100 : latestInfo.maxPlayers;
+      this.lobbyFull =
+        normalizedMax > 0 && latestInfo.participants.length >= normalizedMax;
+      if (this.lobbyFull) {
+        this.joining = false;
+        this.error = "This tournament is full.";
+        if (this.details) {
+          this.details = {
+            lobbyInfo: latestInfo,
+            gameInfo: this.details.gameInfo,
+          };
+        }
+        return;
+      }
+
+      if (this.details) {
+        this.details = {
+          lobbyInfo: latestInfo,
+          gameInfo: this.details.gameInfo,
+        };
       }
 
       await joinLobbyOnchain({ lobbyId });
@@ -371,6 +406,9 @@ export class JoinPrivateTournamentModal extends LitElement {
       );
     }
 
+    const maxPlayers = lobbyInfo.maxPlayers === 0 ? 100 : lobbyInfo.maxPlayers;
+    const playersSummary = `${lobbyInfo.participants.length} current / min ${lobbyInfo.minPlayers} / max ${maxPlayers}`;
+
     const summaryItems = [
       {
         label: "Host",
@@ -390,9 +428,7 @@ export class JoinPrivateTournamentModal extends LitElement {
       },
       {
         label: "Players",
-        value: `${lobbyInfo.participants.length}${
-          config?.maxPlayers ? ` / ${config.maxPlayers}` : ""
-        }`,
+        value: playersSummary,
       },
       {
         label: "Prize Pool",
@@ -611,14 +647,25 @@ export class JoinPrivateTournamentModal extends LitElement {
                 <o-button
                   title=${this.joining
                     ? "Joining…"
-                    : translateText("private_lobby.join_lobby")}
+                    : this.lobbyFull
+                      ? "Tournament is full"
+                      : translateText("private_lobby.join_lobby")}
                   block
                   ?disabled=${this.joining ||
                   (this.details?.lobbyInfo.allowlistEnabled &&
-                    this.allowlistAllowed !== true)}
+                    this.allowlistAllowed !== true) ||
+                  this.lobbyFull}
                   @click=${this.joinTournament}
                   style="width: 100%; max-width: 320px;"
                 ></o-button>
+                ${this.lobbyFull
+                  ? html`<div
+                      class="message-area error show"
+                      style="margin-top: 12px;"
+                    >
+                      This tournament is full.
+                    </div>`
+                  : ""}
               </div>`
             : ""}
         </div>

@@ -28,6 +28,10 @@ const ENV_REQUIREMENTS: Record<GameEnv, EnvConfig> = {
       "R2_ACCESS_KEY",
       "R2_SECRET_KEY",
       "R2_BUCKET",
+      "COINBASE_CDP_API_KEY_JSON",
+      "COINBASE_CDP_API_KEY_PATH",
+      "COINBASE_CDP_API_KEY_NAME",
+      "COINBASE_CDP_PRIVATE_KEY",
     ],
   },
   [GameEnv.Preprod]: {
@@ -37,18 +41,22 @@ const ENV_REQUIREMENTS: Record<GameEnv, EnvConfig> = {
       "mnemonic",
       "DOMAIN",
       "SUBDOMAIN",
-      "CF_ACCOUNT_ID",
-      "CF_API_TOKEN",
     ],
     optional: [
+      "CF_ACCOUNT_ID",
+      "CF_API_TOKEN",
+      "OTEL_EXPORTER_OTLP_ENDPOINT",
+      "OTEL_AUTH_HEADER",
       "ADMIN_TOKEN",
       "API_KEY",
       "WALLET_LINK_FILE",
       "R2_ACCESS_KEY",
       "R2_SECRET_KEY",
       "R2_BUCKET",
-      "OTEL_EXPORTER_OTLP_ENDPOINT",
-      "OTEL_AUTH_HEADER",
+      "COINBASE_CDP_API_KEY_JSON",
+      "COINBASE_CDP_API_KEY_PATH",
+      "COINBASE_CDP_API_KEY_NAME",
+      "COINBASE_CDP_PRIVATE_KEY",
     ],
     conditionallyRequired: [
       {
@@ -66,28 +74,27 @@ const ENV_REQUIREMENTS: Record<GameEnv, EnvConfig> = {
       "ADMIN_TOKEN",
       "DOMAIN",
       "SUBDOMAIN",
+    ],
+    optional: [
       "CF_ACCOUNT_ID",
       "CF_API_TOKEN",
       "OTEL_EXPORTER_OTLP_ENDPOINT",
       "OTEL_AUTH_HEADER",
-    ],
-    optional: [
       "API_KEY",
       "WALLET_LINK_FILE",
       "R2_ACCESS_KEY",
       "R2_SECRET_KEY",
       "R2_BUCKET",
+      "COINBASE_CDP_API_KEY_JSON",
+      "COINBASE_CDP_API_KEY_PATH",
+      "COINBASE_CDP_API_KEY_NAME",
+      "COINBASE_CDP_PRIVATE_KEY",
     ],
     conditionallyRequired: [
       {
         condition: () => true,
         vars: ["API_KEY"],
         reason: "needed for game replay archival",
-      },
-      {
-        condition: () => true,
-        vars: ["R2_ACCESS_KEY", "R2_SECRET_KEY", "R2_BUCKET"],
-        reason: "needed for R2 storage (optional - can archive elsewhere)",
       },
     ],
   },
@@ -172,7 +179,7 @@ function validateContractAddress(errors: string[], warnings: string[]) {
 }
 
 function validateMnemonic(errors: string[], warnings: string[], env: GameEnv) {
-  const mnemonic = process.env.MNEMONIC;
+  const mnemonic = process.env.MNEMONIC ?? process.env.mnemonic;
   if (mnemonic) {
     const words = mnemonic.trim().split(/\s+/);
     if (![12, 15, 18, 21, 24].includes(words.length)) {

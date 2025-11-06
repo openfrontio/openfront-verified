@@ -1,4 +1,5 @@
 import ipAnonymize from "ip-anonymize";
+import type { Address } from "viem";
 import { Logger } from "winston";
 import WebSocket from "ws";
 import { z } from "zod";
@@ -26,6 +27,7 @@ import { archive, finalizeGameRecord } from "./Archive";
 import { Client } from "./Client";
 import {
   declareWinnerOnChainAndConfirm,
+  ejectParticipantOnChain,
   GameStatus,
   getLobbyInfo,
   isLobbyOnChain,
@@ -285,7 +287,14 @@ export class GameServer {
                   kickMethod: "websocket",
                 });
 
+                const kickedClient = this.allClients.get(
+                  clientMsg.intent.target,
+                );
                 this.kickClient(clientMsg.intent.target);
+
+                if (kickedClient) {
+                  await this.ejectParticipantFromOnChainLobby(kickedClient);
+                }
                 return;
               }
               default: {
@@ -659,7 +668,7 @@ export class GameServer {
       client.ws.send(
         JSON.stringify({
           type: "error",
-          error: "Kicked from game (you may have been playing on another tab)",
+          error: "Removed from lobby by host. Entry stake refunded.",
         } satisfies ServerErrorMessage),
       );
       client.ws.close(1000, "Kicked from game");
@@ -670,6 +679,46 @@ export class GameServer {
     } else {
       this.log.warn(`cannot kick client, not found in game`, {
         clientID,
+      });
+    }
+  }
+
+  private async ejectParticipantFromOnChainLobby(
+    client: Client,
+  ): Promise<void> {
+    if (this.hasStarted()) {
+      return;
+    }
+
+    const wallet = client.walletAddress;
+    if (!wallet) {
+      this.log.warn("Cannot eject on-chain: client missing wallet address", {
+        clientID: client.clientID,
+      });
+      return;
+    }
+
+    try {
+      const info = await getLobbyInfo(this.id);
+      if (!info || info.status !== GameStatus.Created) {
+        return;
+      }
+
+      const walletLower = wallet.toLowerCase();
+      const isParticipant = info.participants.some(
+        (addr) => addr.toLowerCase() === walletLower,
+      );
+      if (!isParticipant) {
+        return;
+      }
+
+      await ejectParticipantOnChain(this.id, wallet as Address);
+    } catch (error) {
+      this.log.error("Failed to eject participant on-chain", {
+        gameID: this.id,
+        clientID: client.clientID,
+        wallet,
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }

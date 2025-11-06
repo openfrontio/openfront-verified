@@ -15,49 +15,53 @@ import {IOpenfront} from "./interfaces/IOpenfront.sol";
 contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
     using SafeERC20 for IERC20;
 
+    uint256 internal constant MAX_PLAYER_LIMIT = 100;
+
     struct Lobby {
-        address host;               // Address that created and owns the lobby
-        uint256 betAmount;          // The ETH amount each player must pay/bet to join
-        address[] participants;     // Array of participant addresses
-        GameStatus status;          // Current game state
-        address winner;             // Winner address (set by game server)
-        uint256 totalPrize;         // Total prize pool for this lobby
-        address stakeToken;         // Token used for wagering
+        address host; // Address that created and owns the lobby
+        uint256 betAmount; // The ETH amount each player must pay/bet to join
+        address[] participants; // Array of participant addresses
+        GameStatus status; // Current game state
+        address winner; // Winner address (set by game server)
+        uint256 totalPrize; // Total prize pool for this lobby
+        address stakeToken; // Token used for wagering
     }
-    
-    enum GameStatus { 
-        Created,     // Lobby exists, players can join
-        InProgress,  // Game has started, no new joins allowed
-        Finished,    // Winner declared by game server
-        Claimed      // Prize has been withdrawn
+
+    enum GameStatus {
+        Created, // Lobby exists, players can join
+        InProgress, // Game has started, no new joins allowed
+        Finished, // Winner declared by game server
+        Claimed // Prize has been withdrawn
+
     }
-    
+
     // State variables
     mapping(bytes32 => Lobby) public lobbies;
-    bytes32[] public publicLobbyIds;    // Array to track public lobby IDs
-    bytes32[] public privateLobbyIds;   // Array to track private lobby IDs
+    bytes32[] public publicLobbyIds; // Array to track public lobby IDs
+    bytes32[] public privateLobbyIds; // Array to track private lobby IDs
     mapping(bytes32 => bool) public isPublicLobby; // Visibility of each lobby
     mapping(bytes32 => mapping(address => bool)) private hasJoined; // O(1) membership checks
-    mapping(bytes32 => uint256) private lobbyMaxPlayers; // 0 = unlimited
-    mapping(bytes32 => bool) private allowlistEnabled;    // If true, only allowlisted can join
+    mapping(bytes32 => uint256) private lobbyMaxPlayers; // defaults to MAX_PLAYER_LIMIT
+    mapping(bytes32 => uint256) private lobbyMinPlayers; // 0 uses default (2)
+    mapping(bytes32 => bool) private allowlistEnabled; // If true, only allowlisted can join
     mapping(bytes32 => mapping(address => bool)) private lobbyAllowlist; // allowlist per lobby
     mapping(bytes32 => mapping(address => uint256)) private sponsorBalances; // sponsor contributions per lobby
     mapping(bytes32 => address[]) private sponsorList;
     mapping(bytes32 => mapping(address => bool)) private sponsorTracked;
-    address public gameServer;          // Authorized address to declare winners
-    
+    address public gameServer; // Authorized address to declare winners
+
     modifier onlyHost(bytes32 lobbyId) {
         require(lobbies[lobbyId].host == msg.sender, NotHost());
         _;
     }
-    
+
     modifier onlyGameServer() {
         require(msg.sender == gameServer, NotGameServer());
         _;
     }
-    
+
     // onlyOwner is provided by Ownable
-    
+
     modifier lobbyExists(bytes32 lobbyId) {
         require(lobbies[lobbyId].host != address(0), LobbyNotFound());
         _;
@@ -66,9 +70,14 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
     constructor(address _gameServer) Ownable(msg.sender) {
         gameServer = _gameServer;
     }
-    
+
     /// @inheritdoc IOpenfront
-    function createLobby(bytes32 lobbyId, uint256 betAmount, bool isPublic, address stakeToken) external payable nonReentrant override {
+    function createLobby(bytes32 lobbyId, uint256 betAmount, bool isPublic, address stakeToken)
+        external
+        payable
+        override
+        nonReentrant
+    {
         require(lobbies[lobbyId].host == address(0), LobbyAlreadyExists());
 
         uint256 initialPrize;
@@ -91,23 +100,30 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
             stakeToken: stakeToken
         });
         isPublicLobby[lobbyId] = isPublic;
-        if (isPublic) publicLobbyIds.push(lobbyId); else privateLobbyIds.push(lobbyId);
-        
+        if (isPublic) publicLobbyIds.push(lobbyId);
+        else privateLobbyIds.push(lobbyId);
+
         // Host automatically joins as first participant
         lobbies[lobbyId].participants.push(msg.sender);
         hasJoined[lobbyId][msg.sender] = true;
-        
+        lobbyMinPlayers[lobbyId] = 2;
+        lobbyMaxPlayers[lobbyId] = MAX_PLAYER_LIMIT;
+
         emit LobbyCreated(lobbyId, msg.sender, betAmount);
         emit ParticipantJoined(lobbyId, msg.sender);
     }
-    
+
     /// @inheritdoc IOpenfront
-    function joinLobby(bytes32 lobbyId) external payable nonReentrant lobbyExists(lobbyId) override {
+    function joinLobby(bytes32 lobbyId) external payable override nonReentrant lobbyExists(lobbyId) {
         Lobby storage lobby = lobbies[lobbyId];
 
         require(lobby.status == GameStatus.Created, GameAlreadyStarted());
         uint256 maxP = lobbyMaxPlayers[lobbyId];
-        require(maxP == 0 || lobby.participants.length < maxP, LobbyFull());
+        if (maxP == 0 || maxP > MAX_PLAYER_LIMIT) {
+            maxP = MAX_PLAYER_LIMIT;
+            lobbyMaxPlayers[lobbyId] = maxP;
+        }
+        require(lobby.participants.length < maxP, LobbyFull());
         if (allowlistEnabled[lobbyId]) {
             require(lobbyAllowlist[lobbyId][msg.sender], NotAllowlisted());
         }
@@ -128,26 +144,38 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
 
         emit ParticipantJoined(lobbyId, msg.sender);
     }
-    
+
     /// @inheritdoc IOpenfront
-    function startGame(bytes32 lobbyId) external lobbyExists(lobbyId) onlyHost(lobbyId) override {
+    function startGame(bytes32 lobbyId) external override lobbyExists(lobbyId) onlyHost(lobbyId) {
         Lobby storage lobby = lobbies[lobbyId];
-        
+
         require(lobby.status == GameStatus.Created, GameAlreadyStarted());
-        require(lobby.participants.length >= 2, TooFewPlayers()); // Need at least 2 players
-        
+
+        uint256 minPlayers = lobbyMinPlayers[lobbyId];
+        if (minPlayers == 0) {
+            minPlayers = 2;
+        }
+        require(lobby.participants.length >= minPlayers, TooFewPlayers());
+
+        uint256 maxPlayers = lobbyMaxPlayers[lobbyId];
+        if (maxPlayers == 0 || maxPlayers > MAX_PLAYER_LIMIT) {
+            maxPlayers = MAX_PLAYER_LIMIT;
+            lobbyMaxPlayers[lobbyId] = maxPlayers;
+        }
+        require(lobby.participants.length <= maxPlayers, LobbyFull());
+
         lobby.status = GameStatus.InProgress;
-        
+
         emit GameStarted(lobbyId);
     }
-    
+
     /// @inheritdoc IOpenfront
-    function declareWinner(bytes32 lobbyId, address winner) external onlyGameServer lobbyExists(lobbyId) override {
+    function declareWinner(bytes32 lobbyId, address winner) external override onlyGameServer lobbyExists(lobbyId) {
         Lobby storage lobby = lobbies[lobbyId];
-        
+
         require(lobby.status == GameStatus.InProgress, InvalidStatus());
         require(winner != address(0), ZeroAddress());
-        
+
         // Verify winner is a participant
         bool validParticipant = false;
         for (uint256 i = 0; i < lobby.participants.length; i++) {
@@ -157,15 +185,15 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
             }
         }
         require(validParticipant, NotParticipant());
-        
+
         lobby.winner = winner;
         lobby.status = GameStatus.Finished;
-        
+
         emit GameFinished(lobbyId, winner);
     }
-    
+
     /// @inheritdoc IOpenfront
-    function claimPrize(bytes32 lobbyId) external nonReentrant lobbyExists(lobbyId) override {
+    function claimPrize(bytes32 lobbyId) external override nonReentrant lobbyExists(lobbyId) {
         Lobby storage lobby = lobbies[lobbyId];
 
         require(lobby.status == GameStatus.Finished, GameNotFinished());
@@ -185,7 +213,7 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
         }
 
         if (lobby.stakeToken == address(0)) {
-            (bool success, ) = payable(msg.sender).call{value: totalPrize}("");
+            (bool success,) = payable(msg.sender).call{value: totalPrize}("");
             require(success, TransferFailed());
         } else {
             IERC20(lobby.stakeToken).safeTransfer(msg.sender, totalPrize);
@@ -193,17 +221,22 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
 
         emit PrizeClaimed(lobbyId, msg.sender, totalPrize);
     }
-    
+
     /// @inheritdoc IOpenfront
-    function getLobby(bytes32 lobbyId) external view override returns (
-        address host,
-        uint256 betAmount,
-        address[] memory participants,
-        uint8 status,
-        address winner,
-        uint256 totalPrize,
-        address stakeToken
-    ) {
+    function getLobby(bytes32 lobbyId)
+        external
+        view
+        override
+        returns (
+            address host,
+            uint256 betAmount,
+            address[] memory participants,
+            uint8 status,
+            address winner,
+            uint256 totalPrize,
+            address stakeToken
+        )
+    {
         Lobby memory lobby = lobbies[lobbyId];
         return (
             lobby.host,
@@ -215,12 +248,12 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
             lobby.stakeToken
         );
     }
-    
+
     /// @inheritdoc IOpenfront
     function getParticipantCount(bytes32 lobbyId) external view override returns (uint256) {
         return lobbies[lobbyId].participants.length;
     }
-    
+
     /// @inheritdoc IOpenfront
     function isParticipant(bytes32 lobbyId, address participant) external view override returns (bool) {
         address[] memory participants = lobbies[lobbyId].participants;
@@ -231,9 +264,9 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
         }
         return false;
     }
-    
+
     /// @inheritdoc IOpenfront
-    function setGameServer(address _gameServer) external onlyOwner override {
+    function setGameServer(address _gameServer) external override onlyOwner {
         require(_gameServer != address(0), ZeroAddress());
         address prev = gameServer;
         gameServer = _gameServer;
@@ -241,20 +274,122 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
     }
 
     /// @inheritdoc IOpenfront
-    function setMaxPlayers(bytes32 lobbyId, uint256 maxPlayers) external override lobbyExists(lobbyId) onlyHost(lobbyId) {
+    function setMaxPlayers(bytes32 lobbyId, uint256 maxPlayers)
+        external
+        override
+        lobbyExists(lobbyId)
+        onlyHost(lobbyId)
+    {
         Lobby storage lobby = lobbies[lobbyId];
         require(lobby.status == GameStatus.Created, InvalidStatus());
-        require(maxPlayers == 0 || maxPlayers >= lobby.participants.length, InvalidStatus());
+        if (maxPlayers == 0 || maxPlayers > MAX_PLAYER_LIMIT) {
+            revert InvalidParticipantBounds();
+        }
+        if (maxPlayers < lobby.participants.length) {
+            revert InvalidParticipantBounds();
+        }
+        uint256 currentMin = lobbyMinPlayers[lobbyId];
+        if (currentMin == 0) {
+            currentMin = 2;
+        }
+        if (maxPlayers < currentMin) {
+            revert InvalidParticipantBounds();
+        }
         lobbyMaxPlayers[lobbyId] = maxPlayers;
     }
 
     /// @inheritdoc IOpenfront
     function getMaxPlayers(bytes32 lobbyId) external view override returns (uint256 maxPlayers) {
-        return lobbyMaxPlayers[lobbyId];
+        uint256 configured = lobbyMaxPlayers[lobbyId];
+        return configured == 0 ? MAX_PLAYER_LIMIT : configured;
     }
 
     /// @inheritdoc IOpenfront
-    function setAllowlistEnabled(bytes32 lobbyId, bool enabled) external override lobbyExists(lobbyId) onlyHost(lobbyId) {
+    function setMinPlayers(bytes32 lobbyId, uint256 minPlayers)
+        external
+        override
+        lobbyExists(lobbyId)
+        onlyHost(lobbyId)
+    {
+        Lobby storage lobby = lobbies[lobbyId];
+        require(lobby.status == GameStatus.Created, InvalidStatus());
+        if (minPlayers == 0) {
+            revert InvalidParticipantBounds();
+        }
+        uint256 maxPlayers = lobbyMaxPlayers[lobbyId];
+        if (maxPlayers == 0 || maxPlayers > MAX_PLAYER_LIMIT) {
+            maxPlayers = MAX_PLAYER_LIMIT;
+        }
+        if (minPlayers > maxPlayers) {
+            revert InvalidParticipantBounds();
+        }
+        lobbyMinPlayers[lobbyId] = minPlayers;
+    }
+
+    /// @inheritdoc IOpenfront
+    function getMinPlayers(bytes32 lobbyId) external view override returns (uint256 minPlayers) {
+        uint256 configured = lobbyMinPlayers[lobbyId];
+        return configured == 0 ? 2 : configured;
+    }
+
+    /// @inheritdoc IOpenfront
+    function ejectParticipant(bytes32 lobbyId, address participant)
+        external
+        override
+        nonReentrant
+        lobbyExists(lobbyId)
+        onlyGameServer
+    {
+        Lobby storage lobby = lobbies[lobbyId];
+        require(lobby.status == GameStatus.Created, InvalidStatus());
+        if (participant == lobby.host) {
+            revert CannotEjectHost();
+        }
+        if (!hasJoined[lobbyId][participant]) {
+            revert NotParticipant();
+        }
+
+        address[] storage parts = lobby.participants;
+        uint256 len = parts.length;
+        uint256 idx = type(uint256).max;
+        for (uint256 i = 0; i < len; i++) {
+            if (parts[i] == participant) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx == type(uint256).max) {
+            revert NotParticipant();
+        }
+
+        parts[idx] = parts[len - 1];
+        parts.pop();
+        hasJoined[lobbyId][participant] = false;
+
+        uint256 refund = lobby.betAmount;
+        if (refund > 0) {
+            if (lobby.totalPrize < refund) {
+                revert InvalidParticipantBounds();
+            }
+            lobby.totalPrize -= refund;
+            if (lobby.stakeToken == address(0)) {
+                (bool ok,) = payable(participant).call{value: refund}("");
+                require(ok, RefundFailed());
+            } else {
+                IERC20(lobby.stakeToken).safeTransfer(participant, refund);
+            }
+        }
+
+        emit ParticipantEjected(lobbyId, participant);
+    }
+
+    /// @inheritdoc IOpenfront
+    function setAllowlistEnabled(bytes32 lobbyId, bool enabled)
+        external
+        override
+        lobbyExists(lobbyId)
+        onlyHost(lobbyId)
+    {
         Lobby storage lobby = lobbies[lobbyId];
         require(lobby.status == GameStatus.Created, InvalidStatus());
         allowlistEnabled[lobbyId] = enabled;
@@ -262,7 +397,12 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
     }
 
     /// @inheritdoc IOpenfront
-    function addToAllowlist(bytes32 lobbyId, address[] calldata accounts) external override lobbyExists(lobbyId) onlyHost(lobbyId) {
+    function addToAllowlist(bytes32 lobbyId, address[] calldata accounts)
+        external
+        override
+        lobbyExists(lobbyId)
+        onlyHost(lobbyId)
+    {
         Lobby storage lobby = lobbies[lobbyId];
         require(lobby.status == GameStatus.Created, InvalidStatus());
         uint256 len = accounts.length;
@@ -275,7 +415,12 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
     }
 
     /// @inheritdoc IOpenfront
-    function removeFromAllowlist(bytes32 lobbyId, address[] calldata accounts) external override lobbyExists(lobbyId) onlyHost(lobbyId) {
+    function removeFromAllowlist(bytes32 lobbyId, address[] calldata accounts)
+        external
+        override
+        lobbyExists(lobbyId)
+        onlyHost(lobbyId)
+    {
         Lobby storage lobby = lobbies[lobbyId];
         require(lobby.status == GameStatus.Created, InvalidStatus());
         uint256 len = accounts.length;
@@ -308,7 +453,7 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
         uint256 len = parts.length;
         if (lobby.stakeToken == address(0)) {
             for (uint256 i = 0; i < len; i++) {
-                (bool ok, ) = payable(parts[i]).call{value: refund}("");
+                (bool ok,) = payable(parts[i]).call{value: refund}("");
                 require(ok, RefundFailed());
             }
         } else {
@@ -328,7 +473,7 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
                     if (contribution == 0) continue;
                     sponsorBalances[lobbyId][sponsor] = 0;
                     sponsorTracked[lobbyId][sponsor] = false;
-                    (bool ok, ) = payable(sponsor).call{value: contribution}("");
+                    (bool ok,) = payable(sponsor).call{value: contribution}("");
                     require(ok, RefundFailed());
                 }
             } else {
@@ -349,12 +494,15 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
         emit LobbyCanceled(lobbyId);
     }
 
-    function addToPrizePool(bytes32 lobbyId, uint256 amount) external payable override nonReentrant lobbyExists(lobbyId) {
+    function addToPrizePool(bytes32 lobbyId, uint256 amount)
+        external
+        payable
+        override
+        nonReentrant
+        lobbyExists(lobbyId)
+    {
         Lobby storage lobby = lobbies[lobbyId];
-        require(
-            lobby.status == GameStatus.Created || lobby.status == GameStatus.InProgress,
-            InvalidStatus()
-        );
+        require(lobby.status == GameStatus.Created || lobby.status == GameStatus.InProgress, InvalidStatus());
 
         uint256 contribution;
         if (lobby.stakeToken == address(0)) {
@@ -379,60 +527,60 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
 
         emit PrizePoolSponsored(lobbyId, msg.sender, contribution);
     }
-    
+
     /// @inheritdoc IOpenfront
     function getAllPublicLobbies() external view override returns (bytes32[] memory) {
         return publicLobbyIds;
     }
-    
+
     /// @inheritdoc IOpenfront
     function getAllPrivateLobbies() external view override returns (bytes32[] memory) {
         return privateLobbyIds;
     }
-    
+
     /// @inheritdoc IOpenfront
     function getPublicLobbies(uint256 offset, uint256 limit) external view override returns (bytes32[] memory) {
         if (offset >= publicLobbyIds.length) {
             return new bytes32[](0);
         }
-        
+
         uint256 end = offset + limit;
         if (end > publicLobbyIds.length) {
             end = publicLobbyIds.length;
         }
-        
+
         bytes32[] memory result = new bytes32[](end - offset);
         for (uint256 i = offset; i < end; i++) {
             result[i - offset] = publicLobbyIds[i];
         }
-        
+
         return result;
     }
-    
+
     /// @inheritdoc IOpenfront
     function getPrivateLobbies(uint256 offset, uint256 limit) external view override returns (bytes32[] memory) {
         if (offset >= privateLobbyIds.length) {
             return new bytes32[](0);
         }
-        
+
         uint256 end = offset + limit;
         if (end > privateLobbyIds.length) {
             end = privateLobbyIds.length;
         }
-        
+
         bytes32[] memory result = new bytes32[](end - offset);
         for (uint256 i = offset; i < end; i++) {
             result[i - offset] = privateLobbyIds[i];
         }
-        
+
         return result;
     }
-    
+
     /// @inheritdoc IOpenfront
     function getPublicLobbyCount() external view override returns (uint256) {
         return publicLobbyIds.length;
     }
-    
+
     /// @inheritdoc IOpenfront
     function getPrivateLobbyCount() external view override returns (uint256) {
         return privateLobbyIds.length;

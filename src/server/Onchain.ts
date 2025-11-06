@@ -169,6 +169,8 @@ export type LobbyInfo = {
   wagerDecimals: number;
   isNative: boolean;
   allowlistEnabled: boolean;
+  minPlayers: number;
+  maxPlayers: number;
 };
 
 export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
@@ -190,21 +192,34 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
       totalPrize,
       stakeToken,
     ] = result;
-    const [allowlistFlag, symbol] = await Promise.all([
-      publicClient.readContract({
-        address: CONTRACT_ADDRESS,
-        abi: ContractABI as unknown as any,
-        functionName: "isAllowlistEnabled",
-        args: [lobbyIdBytes32],
-      }) as Promise<boolean>,
-      stakeToken === ZERO_ADDRESS
-        ? Promise.resolve("ETH")
-        : (publicClient.readContract({
-            address: stakeToken,
-            abi: ERC20_SYMBOL_ABI,
-            functionName: "symbol",
-          }) as Promise<string>),
-    ]);
+    const [allowlistFlag, symbol, maxPlayersRaw, minPlayersRaw] =
+      await Promise.all([
+        publicClient.readContract({
+          address: CONTRACT_ADDRESS,
+          abi: ContractABI as unknown as any,
+          functionName: "isAllowlistEnabled",
+          args: [lobbyIdBytes32],
+        }) as Promise<boolean>,
+        stakeToken === ZERO_ADDRESS
+          ? Promise.resolve("ETH")
+          : (publicClient.readContract({
+              address: stakeToken,
+              abi: ERC20_SYMBOL_ABI,
+              functionName: "symbol",
+            }) as Promise<string>),
+        publicClient.readContract({
+          address: CONTRACT_ADDRESS,
+          abi: ContractABI as unknown as any,
+          functionName: "getMaxPlayers",
+          args: [lobbyIdBytes32],
+        }) as Promise<bigint>,
+        publicClient.readContract({
+          address: CONTRACT_ADDRESS,
+          abi: ContractABI as unknown as any,
+          functionName: "getMinPlayers",
+          args: [lobbyIdBytes32],
+        }) as Promise<bigint>,
+      ]);
 
     let decimals = 18;
     if (stakeToken !== ZERO_ADDRESS) {
@@ -237,6 +252,8 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
       wagerDecimals: decimals,
       isNative: stakeToken === ZERO_ADDRESS,
       allowlistEnabled: allowlistFlag,
+      minPlayers: Number(minPlayersRaw),
+      maxPlayers: Number(maxPlayersRaw),
     };
   } catch (e) {
     return null;
@@ -428,6 +445,47 @@ export async function cancelLobbyOnChain(
   } catch (e) {
     log.error("cancelLobbyOnChain exception", {
       lobbyId,
+      error: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+    });
+    return null;
+  }
+}
+
+export async function ejectParticipantOnChain(
+  lobbyId: string,
+  participant: Address,
+): Promise<string | null> {
+  try {
+    if (!serverAccount) {
+      log.error("Cannot eject participant: no server account configured");
+      return null;
+    }
+
+    const lobbyIdBytes32 = stringToBytes32(lobbyId);
+
+    log.info("Ejecting participant on-chain", {
+      lobbyId,
+      participant,
+      serverAccount: serverAccount.address,
+    });
+
+    const hash = await submitRawContractWrite({
+      functionName: "ejectParticipant",
+      args: [lobbyIdBytes32, getAddress(participant)],
+    });
+
+    log.info("Participant ejection transaction submitted", {
+      lobbyId,
+      participant,
+      txHash: hash,
+    });
+
+    return hash;
+  } catch (e) {
+    log.error("ejectParticipantOnChain exception", {
+      lobbyId,
+      participant,
       error: e instanceof Error ? e.message : String(e),
       stack: e instanceof Error ? e.stack : undefined,
     });

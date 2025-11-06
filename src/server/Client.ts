@@ -19,6 +19,7 @@ export class Client {
     public readonly ip: string,
     public readonly username: string,
     public readonly ws: WebSocket,
+    public readonly walletAddress: string | null,
     public readonly cosmetics: PlayerCosmetics | undefined,
   ) {}
 }
