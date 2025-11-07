@@ -325,13 +325,13 @@ export class CreateTournamentModal extends LitElement {
                       "
                     />
                     <span style="color:#fff; opacity:0.9; font-size:18px; font-weight:600;">
-                      ${this.useWagerToken ? "fUSD" : "ETH"}
+                      ${this.useWagerToken ? "USD" : "ETH"}
                     </span>
                   </div>
                   ${
                     this.useWagerToken
                       ? html`<div style="color:#888; font-size:14px;">
-                          Fake USD (1:1)
+                          USD (1:1)
                         </div>`
                       : this.getUSDValue()
                         ? html`<div style="color:#888; font-size:14px;">
@@ -355,21 +355,21 @@ export class CreateTournamentModal extends LitElement {
                                   style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
                                   @click=${() => (this.betAmount = "0")}
                                 >
-                                  Free (0 fUSD)
+                                  Free (0 USD)
                                 </button>
                                 <button
                                   class="option-card"
                                   style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
                                   @click=${() => (this.betAmount = "1")}
                                 >
-                                  Low (1 fUSD)
+                                  Low (1 USD)
                                 </button>
                                 <button
                                   class="option-card"
                                   style="padding:8px 16px; cursor:pointer; transition: all 0.2s;"
                                   @click=${() => (this.betAmount = "10")}
                                 >
-                                  High (10 fUSD)
+                                  High (10 USD)
                                 </button>
                               `
                             : html`
@@ -468,7 +468,7 @@ export class CreateTournamentModal extends LitElement {
                           ${this.isCreating
                             ? "Creating Tournament..."
                             : this.useWagerToken
-                              ? "Create Tournament (fUSD)"
+                              ? "Create Tournament (USD)"
                               : "Create Tournament"}
                         </button>
                       </div>
@@ -1497,7 +1497,7 @@ export class CreateTournamentModal extends LitElement {
     const amt = (this.betAmount ?? "").trim();
     if (!amt || isNaN(Number(amt)) || Number(amt) < 0) {
       throw new Error(
-        `Please enter a valid entry amount in ${this.useWagerToken ? "fUSD" : "ETH"}`,
+        `Please enter a valid entry amount in ${this.useWagerToken ? "USD" : "ETH"}`,
       );
     }
 

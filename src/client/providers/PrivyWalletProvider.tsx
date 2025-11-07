@@ -1,7 +1,7 @@
 import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useEffect } from "react";
-import { megaethTestnet } from "viem/chains";
+import { base } from "viem/chains";
 import { WalletManager } from "../Wallet";
 import { linkWalletIfNeeded } from "../utilities/walletLink";
 
@@ -16,7 +16,7 @@ const privyConfig = {
     },
   },
   loginMethods: ["email" as const],
-  walletChains: [megaethTestnet],
+  walletChains: [base],
   externalWallets: {
     coinbaseWallet: undefined,
     metamask: undefined,
@@ -29,8 +29,8 @@ const privyConfig = {
     accentColor: "#6366f1" as `#${string}`,
     logo: undefined,
   },
-  defaultChain: megaethTestnet,
-  supportedChains: [megaethTestnet],
+  defaultChain: base,
+  supportedChains: [base],
   accountLinking: {
     prompt: "never" as const,
   },

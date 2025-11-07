@@ -8,12 +8,9 @@ import {
   parseEther,
   parseUnits,
 } from "viem";
-import { megaethTestnet } from "viem/chains";
-import {
-  getTokenBalances,
-  requestFaucetTokens,
-  withdrawAsset,
-} from "../Contract";
+import { base } from "viem/chains";
+import { USD_TOKEN_ADDRESS } from "../constants/Config";
+import { getTokenBalances, withdrawAsset } from "../Contract";
 import { getAuthHeader } from "../jwt";
 import { getPersistentID } from "../Main";
 
@@ -23,10 +20,8 @@ export function WalletButton() {
   const { wallets } = useWallets();
   const [showDropdown, setShowDropdown] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [isFaucetPending, setIsFaucetPending] = useState(false);
-  const [faucetMessage, setFaucetMessage] = useState<string | null>(null);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
-  const [withdrawAssetType, setWithdrawAssetType] = useState<"ETH" | "fUSD">(
+  const [withdrawAssetType, setWithdrawAssetType] = useState<"ETH" | "USD">(
     "ETH",
   );
   const [withdrawAmount, setWithdrawAmount] = useState<string>("");
@@ -39,15 +34,15 @@ export function WalletButton() {
 
   const address = wallets[0]?.address;
   const [balanceWei, setBalanceWei] = useState<bigint | undefined>(undefined);
-  const [fakeUsdBalance, setFakeUsdBalance] = useState<string>("—");
-  const [fakeUsdBalanceRaw, setFakeUsdBalanceRaw] = useState<bigint>(0n);
-  const [fakeUsdDecimals, setFakeUsdDecimals] = useState<number>(18);
+  const [usdBalance, setUsdBalance] = useState<string>("—");
+  const [usdBalanceRaw, setUsdBalanceRaw] = useState<bigint>(0n);
+  const [usdDecimals, setUsdDecimals] = useState<number>(6);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     const client = createPublicClient({
-      chain: megaethTestnet,
+      chain: base,
       transport: http(),
     });
     async function fetchBalance() {
@@ -55,8 +50,8 @@ export function WalletButton() {
         if (!address) {
           if (!cancelled) {
             setBalanceWei(undefined);
-            setFakeUsdBalance("—");
-            setFakeUsdBalanceRaw(0n);
+            setUsdBalance("—");
+            setUsdBalanceRaw(0n);
           }
           return;
         }
@@ -65,15 +60,17 @@ export function WalletButton() {
         });
         if (!cancelled) setBalanceWei(bal);
         const balances = await getTokenBalances(address as `0x${string}`);
-        const fake = balances.find((b) => b.symbol === "fUSD");
-        if (!cancelled && fake) {
-          setFakeUsdBalance(fake.balance);
-          setFakeUsdBalanceRaw(fake.rawBalance);
-          setFakeUsdDecimals(fake.decimals);
+        const usd =
+          balances.find((b) => b.token === USD_TOKEN_ADDRESS) ??
+          balances.find((b) => b.symbol === "USDC" || b.symbol === "USD");
+        if (!cancelled && usd) {
+          setUsdBalance(usd.balance);
+          setUsdBalanceRaw(usd.rawBalance);
+          setUsdDecimals(usd.decimals);
         } else if (!cancelled) {
-          setFakeUsdBalance("—");
-          setFakeUsdBalanceRaw(0n);
-          setFakeUsdDecimals(18);
+          setUsdBalance("—");
+          setUsdBalanceRaw(0n);
+          setUsdDecimals(6);
         }
       } catch (_e) {
         // Don't clear balances on error; keep last known values
@@ -113,24 +110,6 @@ export function WalletButton() {
       setTimeout(() => setCopied(false), 2000);
     } catch (e) {
       console.error("Copy address error:", e);
-    }
-  };
-
-  const handleFaucetRequest = async () => {
-    if (isFaucetPending) return;
-    setIsFaucetPending(true);
-    setFaucetMessage(null);
-    try {
-      const hash = await requestFaucetTokens();
-      setFaucetMessage(`Faucet requested. Tx: ${hash.slice(0, 10)}…`);
-      setTimeout(() => setRefreshTrigger((t) => t + 1), 3000);
-    } catch (error: any) {
-      console.error("Faucet request failed:", error);
-      const message =
-        error?.message ?? "Unable to request faucet tokens right now.";
-      setFaucetMessage(message);
-    } finally {
-      setIsFaucetPending(false);
     }
   };
 
@@ -213,15 +192,15 @@ export function WalletButton() {
     if (withdrawAssetType === "ETH") {
       return balanceWei ?? 0n;
     }
-    return fakeUsdBalanceRaw ?? 0n;
-  }, [withdrawAssetType, balanceWei, fakeUsdBalanceRaw]);
+    return usdBalanceRaw ?? 0n;
+  }, [withdrawAssetType, balanceWei, usdBalanceRaw]);
 
   const formattedAvailable = useMemo(() => {
     if (withdrawAssetType === "ETH") {
       return formatBalance(balanceWei);
     }
-    return fakeUsdBalance;
-  }, [withdrawAssetType, fakeUsdBalance, balanceWei]);
+    return usdBalance;
+  }, [withdrawAssetType, usdBalance, balanceWei]);
 
   const resetWithdrawState = () => {
     setWithdrawAmount("");
@@ -261,7 +240,7 @@ export function WalletButton() {
       if (withdrawAssetType === "ETH") {
         parsedAmount = parseEther(withdrawAmount);
       } else {
-        parsedAmount = parseUnits(withdrawAmount, fakeUsdDecimals);
+        parsedAmount = parseUnits(withdrawAmount, usdDecimals);
       }
 
       if (parsedAmount <= 0n) {
@@ -389,60 +368,12 @@ export function WalletButton() {
                 </div>
                 <div className="dropdown-item">
                   <span className="item-label">USD Balance:</span>
-                  <span className="item-value">{fakeUsdBalance} fUSD</span>
+                  <span className="item-value">{usdBalance} USD</span>
                 </div>
               </>
             )}
 
             <div className="dropdown-divider"></div>
-
-            <button
-              className="logout-button"
-              onClick={() =>
-                window.open("https://testnet.megaeth.com", "_blank")
-              }
-            >
-              <svg
-                className="logout-icon"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M19 19H5V5H12V3H5C3.89 3 3 3.9 3 5V19C3 20.1 3.89 21 5 21H19C20.1 21 21 20.1 21 19V12H19V19ZM14 3V5H17.59L7.76 14.83L9.17 16.24L19 6.41V10H21V3H14Z"
-                  fill="currentColor"
-                />
-              </svg>
-              Get ETH Faucet
-            </button>
-
-            <button
-              className="logout-button"
-              onClick={handleFaucetRequest}
-              disabled={isFaucetPending}
-            >
-              <svg
-                className="logout-icon"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Zm1 17.93c-3.95.49-7.43-2.54-7.92-6.49-.05-.4.27-.74.68-.74h1.02c.34 0 .63.25.68.58.3 2.19 2.3 3.85 4.54 3.59 1.93-.22 3.47-1.76 3.69-3.69.26-2.24-1.4-4.24-3.59-4.54-.33-.05-.58-.34-.58-.68V6c0-.41.34-.73.74-.68 3.95.49 6.98 3.97 6.49 7.92-.43 3.45-3.35 6.19-6.83 6.69Z"
-                  fill="currentColor"
-                />
-              </svg>
-              {isFaucetPending ? "Requesting Faucet…" : "Request 100 fUSD"}
-            </button>
-
-            {faucetMessage && (
-              <div className="dropdown-item" style={{ color: "#9ccc65" }}>
-                <span className="item-value">{faucetMessage}</span>
-              </div>
-            )}
-
-            <div className="dropdown-divider"></div>
-
             <button className="logout-button" onClick={handleCopyAddress}>
               <svg
                 className="logout-icon"
@@ -485,6 +416,8 @@ export function WalletButton() {
                 <span className="item-value">{fundMessage}</span>
               </div>
             )}
+
+            <div className="dropdown-divider"></div>
 
             <button
               className="logout-button withdraw-trigger"
@@ -550,12 +483,12 @@ export function WalletButton() {
                 <select
                   value={withdrawAssetType}
                   onChange={(e) =>
-                    setWithdrawAssetType(e.target.value as "ETH" | "fUSD")
+                    setWithdrawAssetType(e.target.value as "ETH" | "USD")
                   }
                   className="withdraw-modal__select"
                 >
                   <option value="ETH">ETH (native)</option>
-                  <option value="fUSD">fUSD (ERC-20)</option>
+                  <option value="USD">USD (ERC-20)</option>
                 </select>
               </label>
 

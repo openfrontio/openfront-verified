@@ -17,10 +17,10 @@ export const CONTRACT_ADDRESS = (
     : "0x89F80517908556a9C1D165fe34bD6DbCD91D0762"
 ) as `0x${string}`;
 
-export const FAKE_USD_TOKEN_ADDRESS = (
-  typeof process !== "undefined" && process.env?.FAKE_USD_TOKEN_ADDRESS
-    ? (process.env.FAKE_USD_TOKEN_ADDRESS as `0x${string}`)
-    : ("0xD7B74A7D53F0f340DbbB0f3A6f1Ef3939962529C" as `0x${string}`)
+export const USD_TOKEN_ADDRESS = (
+  typeof process !== "undefined" && process.env?.USD_TOKEN_ADDRESS
+    ? (process.env.USD_TOKEN_ADDRESS as `0x${string}`)
+    : ("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as `0x${string}`)
 ) as `0x${string}`;
 export const ZERO_ADDRESS =
   "0x0000000000000000000000000000000000000000" as `0x${string}`;

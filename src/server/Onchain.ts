@@ -10,7 +10,7 @@ import {
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 import { waitForTransactionReceipt } from "viem/actions";
-import { megaethTestnet } from "viem/chains";
+import { base } from "viem/chains";
 import { ContractABI } from "./ContractABI";
 import { logger } from "./Logger";
 
@@ -38,13 +38,13 @@ const ERC20_DECIMALS_ABI = [
 ] as const;
 
 // Configuration
-const RPC_URL = process.env.RPC_URL ?? "https://carrot.megaeth.com/rpc";
+const RPC_URL = process.env.RPC_URL ?? "https://base.llamarpc.com";
 const CONTRACT_ADDRESS = (process.env.CONTRACT_ADDRESS ??
   "0x89F80517908556a9C1D165fe34bD6DbCD91D0762") as Address;
 const MNEMONIC = process.env.MNEMONIC;
 
 // Always use Base Sepolia
-const chain = megaethTestnet;
+const chain = base;
 
 // Log configuration on startup
 log.info("On-chain configuration:", {

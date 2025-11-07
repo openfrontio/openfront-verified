@@ -8,15 +8,15 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://openfront-megaeth-testnet.eigenarcade.com/api/:path*"
+      "destination": "https://openfront-mainnet.eigenarcade.com/api/:path*"
     },
     {
       "source": "/w0/:path*",
-      "destination": "https://openfront-megaeth-testnet.eigenarcade.com/w0/:path*"
+      "destination": "https://openfront-mainnet.eigenarcade.com/w0/:path*"
     },
     {
       "source": "/w1/:path*",
-      "destination": "https://openfront-megaeth-testnet.eigenarcade.com/w1/:path*"
+      "destination": "https://openfront-mainnet.eigenarcade.com/w1/:path*"
     },
     {
       "source": "/:path((?!_next|api|static|favicon.ico|robots.txt|.*\\..*).*)",
@@ -38,6 +38,10 @@
         {
           "key": "X-XSS-Protection",
           "value": "1; mode=block"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org; frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com; connect-src 'self' https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com; worker-src 'self'; manifest-src 'self'"
         }
       ]
     },
@@ -63,7 +67,7 @@
   "build": {
     "env": {
       "NODE_ENV": "production",
-      "WS_HOST": "openfront-megaeth-testnet.eigenarcade.com"
+      "WS_HOST": "openfront-mainnet.eigenarcade.com"
     }
   },
   "regions": ["sfo1"]

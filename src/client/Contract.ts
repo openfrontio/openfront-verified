@@ -8,14 +8,13 @@ import {
   getAddress,
   http,
   parseEther,
-  parseGwei,
   parseUnits,
   type Hash,
 } from "viem";
-import { megaethTestnet } from "viem/chains";
+import { base } from "viem/chains";
 import {
   CONTRACT_ADDRESS,
-  FAKE_USD_TOKEN_ADDRESS,
+  USD_TOKEN_ADDRESS,
   ZERO_ADDRESS,
 } from "./constants/Config";
 import { CONTRACT_ABI } from "./constants/ContractABI";
@@ -31,27 +30,23 @@ const RPC_URL =
 
 console.log("[Contract] Client blockchain config:", {
   contractAddress: CONTRACT_ADDRESS,
-  rpcUrl: RPC_URL ?? "default (megaethTestnet public node)",
-  chain: "megaethTestnet",
+  rpcUrl: RPC_URL ?? "default (base public node)",
+  chain: "base",
 });
 
 // Centralized viem clients and helpers
 const publicClient = createPublicClient({
-  chain: megaethTestnet,
+  chain: base,
   transport: RPC_URL ? http(RPC_URL) : http(),
 });
 let walletClientCache: any | null = null;
-
-const GAS_LIMIT = 1_000_000_000n;
-const MAX_FEE_PER_GAS = parseGwei("0.0025");
-const MAX_PRIORITY_FEE_PER_GAS = parseGwei("0.001");
 
 async function getWalletClient() {
   if (walletClientCache) return walletClientCache;
   const provider = await window.privyWallet?.getEmbeddedProvider?.();
   if (!provider) throw new Error("Embedded wallet provider unavailable");
   walletClientCache = createWalletClient({
-    chain: megaethTestnet,
+    chain: base,
     transport: custom(provider),
   });
   return walletClientCache;
@@ -86,30 +81,18 @@ async function wagmiWrite(params: {
     args: args ?? [],
   });
 
-  const nonce = await publicClient.getTransactionCount({
-    address: account,
-    blockTag: "pending",
-  });
-
   const request: any = {
     account,
-    chain: megaethTestnet,
+    chain: base,
     to: address,
     data,
-    nonce,
-    gas: GAS_LIMIT,
-    maxFeePerGas: MAX_FEE_PER_GAS,
-    maxPriorityFeePerGas: MAX_PRIORITY_FEE_PER_GAS,
   };
 
   if (typeof value !== "undefined") {
     request.value = value;
   }
 
-  const serializedTransaction = await client.signTransaction(request);
-
-  return await client.sendRawTransaction({
-    serializedTransaction,
+  return await client.sendTransaction(request, {
     sponsor: true,
   });
 }
@@ -190,7 +173,7 @@ export async function requestFaucetTokens(): Promise<Hash> {
   if (!account) throw new Error("No connected wallet");
 
   return await wagmiWrite({
-    address: FAKE_USD_TOKEN_ADDRESS,
+    address: USD_TOKEN_ADDRESS,
     abi: [
       {
         type: "function",
@@ -205,6 +188,7 @@ export async function requestFaucetTokens(): Promise<Hash> {
 }
 
 export type TokenBalanceInfo = {
+  token: `0x${string}`;
   symbol: string;
   balance: string;
   rawBalance: bigint;
@@ -218,6 +202,7 @@ export async function getTokenBalances(
 
   const nativeBalance = await publicClient.getBalance({ address: account });
   balances.push({
+    token: ZERO_ADDRESS,
     symbol: "ETH",
     balance: formatEther(nativeBalance),
     rawBalance: nativeBalance,
@@ -225,33 +210,51 @@ export async function getTokenBalances(
   });
 
   try {
-    const [fakeBalance, fakeSymbol] = await Promise.all([
+    const [usdMeta, usdBalance] = await Promise.all([
+      getUsdTokenMetadata(),
       publicClient.readContract({
-        address: FAKE_USD_TOKEN_ADDRESS,
+        address: USD_TOKEN_ADDRESS,
         abi: ERC20_ABI,
         functionName: "balanceOf",
         args: [account],
       }) as Promise<bigint>,
-      publicClient.readContract({
-        address: FAKE_USD_TOKEN_ADDRESS,
-        abi: ERC20_ABI,
-        functionName: "symbol",
-      }) as Promise<string>,
     ]);
 
+    console.log("[TokenBalances] USD token resolved", {
+      account,
+      token: USD_TOKEN_ADDRESS,
+      symbol: usdMeta.symbol,
+      decimals: usdMeta.decimals,
+      rawBalance: usdBalance.toString(),
+      formattedBalance: formatUnits(usdBalance, usdMeta.decimals),
+    });
+
+    const normalizedSymbol =
+      usdMeta.symbol.trim().toUpperCase() === "USDBC"
+        ? "USDC"
+        : usdMeta.symbol === "USD"
+          ? "USDC"
+          : usdMeta.symbol;
+
     balances.push({
-      symbol: fakeSymbol,
-      balance: formatUnits(fakeBalance, 18),
-      rawBalance: fakeBalance,
-      decimals: 18,
+      token: USD_TOKEN_ADDRESS,
+      symbol: normalizedSymbol,
+      balance: formatUnits(usdBalance, usdMeta.decimals),
+      rawBalance: usdBalance,
+      decimals: usdMeta.decimals,
     });
   } catch (error) {
-    console.warn("Failed to fetch fUSD balance:", error);
+    console.warn("[TokenBalances] Failed to fetch USD balance", {
+      account,
+      token: USD_TOKEN_ADDRESS,
+      error,
+    });
     balances.push({
-      symbol: "fUSD",
+      token: USD_TOKEN_ADDRESS,
+      symbol: "USDC",
       balance: "—",
       rawBalance: 0n,
-      decimals: 18,
+      decimals: 6,
     });
   }
 
@@ -264,33 +267,21 @@ async function sendNativeTransaction(to: `0x${string}`, value: bigint) {
   if (!account) throw new Error("No connected wallet");
   const client = await getWalletClient();
 
-  const nonce = await publicClient.getTransactionCount({
-    address: account,
-    blockTag: "pending",
-  });
-
   const request: any = {
     account,
-    chain: megaethTestnet,
+    chain: base,
     to,
     value,
-    nonce,
-    gas: GAS_LIMIT,
     data: "0x",
-    maxFeePerGas: MAX_FEE_PER_GAS,
-    maxPriorityFeePerGas: MAX_PRIORITY_FEE_PER_GAS,
   };
 
-  const serializedTransaction = await client.signTransaction(request);
-
-  return await client.sendRawTransaction({
-    serializedTransaction,
+  return await client.sendTransaction(request, {
     sponsor: true,
   });
 }
 
 export async function withdrawAsset(params: {
-  asset: "ETH" | "fUSD";
+  asset: "ETH" | "USD";
   recipient: `0x${string}`;
   amount: string;
 }): Promise<Hash> {
@@ -310,25 +301,28 @@ export async function withdrawAsset(params: {
     return await sendNativeTransaction(normalizedRecipient, weiAmount);
   }
 
-  const tokenAmount = parseUnits(amount, 18);
+  const usdMeta = await getUsdTokenMetadata();
+  const tokenAmount = parseUnits(amount, usdMeta.decimals);
   if (tokenAmount <= 0n) {
     throw new Error("Amount must be greater than zero.");
   }
 
   return await wagmiWrite({
-    address: FAKE_USD_TOKEN_ADDRESS,
+    address: USD_TOKEN_ADDRESS,
     abi: ERC20_ABI,
     functionName: "transfer",
     args: [normalizedRecipient, tokenAmount],
   });
 }
 
-export function getFakeUsdFromWei(wei: bigint): string {
-  return formatUnits(wei, 18);
+export async function getUsdFromWei(wei: bigint): Promise<string> {
+  const meta = await getUsdTokenMetadata();
+  return formatUnits(wei, meta.decimals);
 }
 
-export function parseFakeUsd(value: string): bigint {
-  return parseUnits(value, 18);
+export async function parseUsd(value: string): Promise<bigint> {
+  const meta = await getUsdTokenMetadata();
+  return parseUnits(value, meta.decimals);
 }
 
 export async function isAllowlistEnabledOnchain(
@@ -363,6 +357,18 @@ type TokenMetadata = {
 };
 
 const tokenMetadataCache = new Map<string, TokenMetadata>();
+
+let usdTokenMetadataPromise: Promise<TokenMetadata> | null = null;
+
+async function getUsdTokenMetadata(): Promise<TokenMetadata> {
+  usdTokenMetadataPromise ??= getTokenMetadata(USD_TOKEN_ADDRESS);
+  try {
+    return await usdTokenMetadataPromise;
+  } catch (error) {
+    usdTokenMetadataPromise = null;
+    throw error;
+  }
+}
 
 async function getTokenMetadata(token: `0x${string}`): Promise<TokenMetadata> {
   const cacheKey = token.toLowerCase();
@@ -490,7 +496,7 @@ export async function createLobby(
     );
   }
 
-  const stakeToken = FAKE_USD_TOKEN_ADDRESS;
+  const stakeToken = USD_TOKEN_ADDRESS;
   const stakeMeta = await getTokenMetadata(stakeToken);
   const betAmountWei = parseUnits(
     betAmount,

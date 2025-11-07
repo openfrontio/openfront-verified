@@ -120,8 +120,15 @@ export default async (env, argv) => {
         },
         {
           test: /\.tsx?$/,
-          use: "ts-loader",
-          exclude: /node_modules/,
+          use: [
+            {
+              loader: "ts-loader",
+              options: {
+                transpileOnly: true,
+              },
+            },
+          ],
+          exclude: [/node_modules/, /src\/server/, /src\/scripts/],
         },
         {
           test: /\.css$/,
@@ -191,6 +198,10 @@ export default async (env, argv) => {
         buffer: require.resolve("buffer/"),
         stream: require.resolve("stream-browserify"),
       },
+    },
+    externals: {
+      "@coinbase/cdp-sdk": "commonjs @coinbase/cdp-sdk",
+      "@coinbase/cdp-sdk/auth": "commonjs @coinbase/cdp-sdk/auth",
     },
     plugins: [
       new HtmlWebpackPlugin({
