@@ -123,14 +123,26 @@
         X-XSS-Protection "1; mode=block"
         Referrer-Policy "strict-origin-when-cross-origin"
         
-        # CORS for WebSocket and API access
-        Access-Control-Allow-Origin "*"
-        Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-        Access-Control-Allow-Headers "Content-Type, Authorization"
-        
         # Remove server header
         -Server
     }
+
+    @cors_origin header_regexp Origin ^https://([a-zA-Z0-9-]+\.)?eigenarcade\.com$
+    header @cors_origin Access-Control-Allow-Origin "{http.request.header.Origin}"
+    header @cors_origin Access-Control-Allow-Credentials "true"
+    header @cors_origin Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    header @cors_origin Access-Control-Allow-Headers "Content-Type, Authorization"
+
+    @cors_preflight {
+        method OPTIONS
+        header_regexp Origin ^https://([a-zA-Z0-9-]+\.)?eigenarcade\.com$
+    }
+    header @cors_preflight Access-Control-Allow-Origin "{http.request.header.Origin}"
+    header @cors_preflight Access-Control-Allow-Credentials "true"
+    header @cors_preflight Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    header @cors_preflight Access-Control-Allow-Headers "Content-Type, Authorization"
+    header @cors_preflight Access-Control-Max-Age "86400"
+    respond @cors_preflight "" 204
 
     # Logging
     log {

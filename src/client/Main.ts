@@ -524,14 +524,24 @@ class Client {
           "flag-input-modal",
           "token-login",
         ].forEach((tag) => {
-          const modal = document.querySelector(tag) as HTMLElement & {
-            close?: () => void;
-            isModalOpen?: boolean;
-          };
-          if (modal?.close) {
-            modal.close();
-          } else if ("isModalOpen" in modal) {
-            modal.isModalOpen = false;
+          const element = document.querySelector(tag) as
+            | (HTMLElement & {
+                close?: () => void;
+                isModalOpen?: boolean;
+              })
+            | null;
+
+          if (!element) {
+            return;
+          }
+
+          if (typeof element.close === "function") {
+            element.close();
+            return;
+          }
+
+          if ("isModalOpen" in element) {
+            (element as { isModalOpen?: boolean }).isModalOpen = false;
           }
         });
         document.querySelectorAll(".ad").forEach((ad) => {

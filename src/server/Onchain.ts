@@ -1,7 +1,6 @@
 import {
   createPublicClient,
   createWalletClient,
-  encodeFunctionData,
   getAddress,
   http,
   parseGwei,
@@ -81,7 +80,6 @@ export const walletClient = createWalletClient({
   transport: http(RPC_URL),
 });
 
-const GAS_LIMIT = 1_000_000_000n;
 const MAX_FEE_PER_GAS = parseGwei("0.0025");
 const MAX_PRIORITY_FEE_PER_GAS = parseGwei("0.001");
 
@@ -94,38 +92,33 @@ async function submitRawContractWrite(params: {
     throw new Error("Server account unavailable for contract write");
   }
 
-  const data = encodeFunctionData({
+  const estimateArgs: any = {
+    account: serverAccount.address,
+    address: CONTRACT_ADDRESS,
     abi: ContractABI as unknown as any,
     functionName: params.functionName,
     args: params.args ?? [],
-  });
-
-  const nonce = await publicClient.getTransactionCount({
-    address: serverAccount.address,
-    blockTag: "pending",
-  });
+  };
+  if (typeof params.value !== "undefined") {
+    estimateArgs.value = params.value;
+  }
+  const gasLimit = await publicClient.estimateContractGas(estimateArgs);
 
   const request: any = {
     account: serverAccount,
-    chain,
-    to: CONTRACT_ADDRESS,
-    data,
-    nonce,
-    gas: GAS_LIMIT,
+    address: CONTRACT_ADDRESS,
+    abi: ContractABI as unknown as any,
+    functionName: params.functionName,
+    args: params.args ?? [],
+    gas: gasLimit,
     maxFeePerGas: MAX_FEE_PER_GAS,
     maxPriorityFeePerGas: MAX_PRIORITY_FEE_PER_GAS,
-    type: "eip1559",
   };
-
   if (typeof params.value !== "undefined") {
     request.value = params.value;
   }
 
-  const serializedTransaction = await walletClient.signTransaction(request);
-
-  return await publicClient.sendRawTransaction({
-    serializedTransaction,
-  });
+  return await walletClient.writeContract(request);
 }
 
 function stringToBytes32(str: string): `0x${string}` {

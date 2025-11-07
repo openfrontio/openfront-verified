@@ -272,8 +272,8 @@ export function WalletButton() {
       setFundError("Enter a valid amount in USD.");
       return;
     }
-    if (parsed < 3) {
-      setFundError("Minimum deposit is $3.");
+    if (parsed < 5) {
+      setFundError("Minimum deposit is $5.");
       return;
     }
     if (parsed > 30) {
@@ -650,14 +650,14 @@ export function WalletButton() {
             <div className="fund-modal__content">
               <p className="fund-modal__description">
                 Enter the amount of USD you’d like to on-ramp through Coinbase.
-                Minimum $3, maximum $30.
+                Minimum $5, maximum $30.
               </p>
 
               <label className="fund-modal__label">
                 Amount (USD)
                 <input
                   type="number"
-                  min="3"
+                  min="5"
                   max="30"
                   step="0.01"
                   value={fundAmount}
