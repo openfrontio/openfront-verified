@@ -1,14 +1,6 @@
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { useEffect, useMemo, useState } from "react";
-import {
-  createPublicClient,
-  formatEther,
-  http,
-  isAddress,
-  parseEther,
-  parseUnits,
-} from "viem";
-import { base } from "viem/chains";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { isAddress, parseEther, parseUnits } from "viem";
 import { USD_TOKEN_ADDRESS } from "../constants/Config";
 import { getTokenBalances, withdrawAsset } from "../Contract";
 import { getAuthHeader } from "../jwt";
@@ -21,8 +13,8 @@ export function WalletButton() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
-  const [withdrawAssetType, setWithdrawAssetType] = useState<"ETH" | "USD">(
-    "ETH",
+  const [withdrawAssetType, setWithdrawAssetType] = useState<"ETH" | "USDC">(
+    "USDC",
   );
   const [withdrawAmount, setWithdrawAmount] = useState<string>("");
   const [withdrawRecipient, setWithdrawRecipient] = useState<string>("");
@@ -31,49 +23,43 @@ export function WalletButton() {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [fundMessage, setFundMessage] = useState<string | null>(null);
   const [isFunding, setIsFunding] = useState(false);
+  const [isBalanceMenuOpen, setIsBalanceMenuOpen] = useState(false);
+  const [isFundModalOpen, setIsFundModalOpen] = useState(false);
+  const [fundAmount, setFundAmount] = useState<string>("10");
+  const [fundError, setFundError] = useState<string | null>(null);
 
   const address = wallets[0]?.address;
-  const [balanceWei, setBalanceWei] = useState<bigint | undefined>(undefined);
   const [usdBalance, setUsdBalance] = useState<string>("—");
   const [usdBalanceRaw, setUsdBalanceRaw] = useState<bigint>(0n);
   const [usdDecimals, setUsdDecimals] = useState<number>(6);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const balanceMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const client = createPublicClient({
-      chain: base,
-      transport: http(),
-    });
     async function fetchBalance() {
       try {
         if (!address) {
           if (!cancelled) {
-            setBalanceWei(undefined);
             setUsdBalance("—");
             setUsdBalanceRaw(0n);
           }
           return;
         }
-        const bal = await client.getBalance({
-          address: address as `0x${string}`,
-        });
-        if (!cancelled) setBalanceWei(bal);
         const balances = await getTokenBalances(address as `0x${string}`);
         const usd =
           balances.find((b) => b.token === USD_TOKEN_ADDRESS) ??
           balances.find((b) => b.symbol === "USDC" || b.symbol === "USD");
         if (!cancelled && usd) {
           setUsdBalance(usd.balance);
-          setUsdBalanceRaw(usd.rawBalance);
           setUsdDecimals(usd.decimals);
+          setUsdBalanceRaw(usd.rawBalance);
         } else if (!cancelled) {
           setUsdBalance("—");
           setUsdBalanceRaw(0n);
           setUsdDecimals(6);
         }
       } catch (_e) {
-        // Don't clear balances on error; keep last known values
         console.debug("Balance fetch failed, keeping last known values");
       }
     }
@@ -84,6 +70,23 @@ export function WalletButton() {
       clearInterval(id);
     };
   }, [address, refreshTrigger]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        balanceMenuRef.current &&
+        !balanceMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsBalanceMenuOpen(false);
+      }
+    };
+    if (isBalanceMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isBalanceMenuOpen]);
 
   const handleLogin = async () => {
     try {
@@ -113,7 +116,7 @@ export function WalletButton() {
     }
   };
 
-  const handleFundWallet = async () => {
+  const startOnrampSession = async (amountUSD: number) => {
     if (isFunding) return;
     setFundMessage(null);
 
@@ -144,7 +147,7 @@ export function WalletButton() {
         body: JSON.stringify({
           asset: "USDC",
           network: "base",
-          presetFiatAmount: 50,
+          presetFiatAmount: amountUSD,
         }),
       });
 
@@ -182,25 +185,67 @@ export function WalletButton() {
     }
   };
 
-  const formatAddress = (addr: string) =>
-    `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-
-  const formatBalance = (wei?: bigint) =>
-    wei === undefined ? "—" : parseFloat(formatEther(wei)).toFixed(4);
-
   const availableToWithdraw = useMemo(() => {
     if (withdrawAssetType === "ETH") {
-      return balanceWei ?? 0n;
+      return 0n;
     }
     return usdBalanceRaw ?? 0n;
-  }, [withdrawAssetType, balanceWei, usdBalanceRaw]);
+  }, [withdrawAssetType, usdBalanceRaw]);
 
   const formattedAvailable = useMemo(() => {
     if (withdrawAssetType === "ETH") {
-      return formatBalance(balanceWei);
+      return "0";
     }
     return usdBalance;
-  }, [withdrawAssetType, usdBalance, balanceWei]);
+  }, [withdrawAssetType, usdBalance]);
+
+  const usdDisplay = useMemo(() => {
+    if (!authenticated) {
+      return "Login";
+    }
+
+    if (usdBalance === "—") {
+      return "—";
+    }
+
+    const parsed = Number.parseFloat(usdBalance);
+    if (Number.isNaN(parsed)) {
+      return "—";
+    }
+
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(parsed);
+  }, [authenticated, usdBalance]);
+
+  const handleBalanceButtonClick = async () => {
+    if (!authenticated) {
+      await handleLogin();
+      return;
+    }
+    setIsBalanceMenuOpen((prev) => !prev);
+  };
+
+  const beginWithdrawFlow = () => {
+    setIsBalanceMenuOpen(false);
+    setWithdrawAssetType("USDC");
+    setWithdrawAmount("");
+    setWithdrawRecipient("");
+    setWithdrawError(null);
+    setWithdrawSuccess(null);
+    setIsWithdrawOpen(true);
+  };
+
+  const beginFundFlow = () => {
+    setIsBalanceMenuOpen(false);
+    setFundAmount("10");
+    setFundError(null);
+    setFundMessage(null);
+    setIsFundModalOpen(true);
+  };
 
   const resetWithdrawState = () => {
     setWithdrawAmount("");
@@ -213,6 +258,33 @@ export function WalletButton() {
   const closeWithdrawModal = () => {
     resetWithdrawState();
     setIsWithdrawOpen(false);
+  };
+
+  const closeFundModal = () => {
+    setIsFundModalOpen(false);
+    setFundError(null);
+    setFundMessage(null);
+  };
+
+  const handleFundSubmit = async () => {
+    const parsed = Number(fundAmount);
+    if (Number.isNaN(parsed)) {
+      setFundError("Enter a valid amount in USD.");
+      return;
+    }
+    if (parsed < 3) {
+      setFundError("Minimum deposit is $3.");
+      return;
+    }
+    if (parsed > 30) {
+      setFundError("Maximum deposit is $30.");
+      return;
+    }
+
+    setFundError(null);
+    await startOnrampSession(Number(parsed.toFixed(2)));
+    setRefreshTrigger((t) => t + 1);
+    setIsFundModalOpen(false);
   };
 
   const handleWithdraw = async () => {
@@ -255,7 +327,7 @@ export function WalletButton() {
 
       setIsWithdrawing(true);
       const tx = await withdrawAsset({
-        asset: withdrawAssetType,
+        asset: withdrawAssetType === "ETH" ? "ETH" : "USD",
         recipient: withdrawRecipient as `0x${string}`,
         amount: withdrawAmount,
       });
@@ -283,7 +355,11 @@ export function WalletButton() {
   if (!authenticated) {
     return (
       <div className="wallet-button-container">
-        <button className="wallet-button connect" onClick={handleLogin}>
+        <button
+          className="wallet-button connect"
+          onClick={handleLogin}
+          type="button"
+        >
           <>
             <svg
               className="wallet-icon"
@@ -304,24 +380,17 @@ export function WalletButton() {
   }
 
   return (
-    <div className="wallet-button-container">
+    <div className="wallet-button-container" ref={balanceMenuRef}>
       <button
         className="wallet-button connected"
         onClick={() => setShowDropdown(!showDropdown)}
+        type="button"
       >
         <div className="wallet-info">
           {user?.email && (
             <span className="user-email">
               {user.email.address || String(user.email)}
             </span>
-          )}
-          {address && (
-            <>
-              <span className="wallet-address">{formatAddress(address)}</span>
-              <span className="wallet-balance">
-                {formatBalance(balanceWei)} ETH
-              </span>
-            </>
           )}
         </div>
         <svg
@@ -339,6 +408,27 @@ export function WalletButton() {
           />
         </svg>
       </button>
+
+      <div className="balance-button-wrapper">
+        <button
+          className="balance-button"
+          onClick={handleBalanceButtonClick}
+          type="button"
+        >
+          {usdDisplay}
+        </button>
+
+        {isBalanceMenuOpen && (
+          <div className="balance-menu">
+            <button type="button" onClick={beginFundFlow}>
+              Add Funds
+            </button>
+            <button type="button" onClick={beginWithdrawFlow}>
+              Withdraw
+            </button>
+          </div>
+        )}
+      </div>
 
       {showDropdown && (
         <div className="wallet-dropdown">
@@ -361,13 +451,7 @@ export function WalletButton() {
                   <span className="item-value">{address}</span>
                 </div>
                 <div className="dropdown-item">
-                  <span className="item-label">Balance:</span>
-                  <span className="item-value">
-                    {formatBalance(balanceWei)} ETH
-                  </span>
-                </div>
-                <div className="dropdown-item">
-                  <span className="item-label">USD Balance:</span>
+                  <span className="item-label">USDC Balance:</span>
                   <span className="item-value">{usdBalance} USD</span>
                 </div>
               </>
@@ -391,7 +475,7 @@ export function WalletButton() {
 
             <button
               className="logout-button fund-button"
-              onClick={handleFundWallet}
+              onClick={beginFundFlow}
               disabled={isFunding}
             >
               <svg
@@ -408,7 +492,7 @@ export function WalletButton() {
                   strokeLinejoin="round"
                 />
               </svg>
-              {isFunding ? "Launching Onramp…" : "Fund Wallet (Base)"}
+              Fund Wallet
             </button>
 
             {fundMessage && (
@@ -421,7 +505,10 @@ export function WalletButton() {
 
             <button
               className="logout-button withdraw-trigger"
-              onClick={() => setIsWithdrawOpen(true)}
+              onClick={() => {
+                setShowDropdown(false);
+                beginWithdrawFlow();
+              }}
             >
               <svg
                 className="logout-icon"
@@ -474,8 +561,8 @@ export function WalletButton() {
             </div>
             <div className="withdraw-modal__content">
               <p className="withdraw-modal__warning">
-                ⚠️ Withdrawals execute on the MegaETH Testnet. Double-check the
-                recipient address and network in your wallet before confirming.
+                ⚠️ Withdrawals deliver USDC on the Base network. Only send to
+                wallets or exchanges that support Base USDC deposits.
               </p>
 
               <label className="withdraw-modal__label">
@@ -483,12 +570,12 @@ export function WalletButton() {
                 <select
                   value={withdrawAssetType}
                   onChange={(e) =>
-                    setWithdrawAssetType(e.target.value as "ETH" | "USD")
+                    setWithdrawAssetType(e.target.value as "ETH" | "USDC")
                   }
                   className="withdraw-modal__select"
                 >
                   <option value="ETH">ETH (native)</option>
-                  <option value="USD">USD (ERC-20)</option>
+                  <option value="USDC">USDC (Base)</option>
                 </select>
               </label>
 
@@ -539,7 +626,64 @@ export function WalletButton() {
                   onClick={handleWithdraw}
                   disabled={isWithdrawing}
                 >
-                  {isWithdrawing ? "Withdrawing…" : "Confirm Withdraw"}
+                  {isWithdrawing ? "Processing..." : "Withdraw"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isFundModalOpen && (
+        <div className="fund-modal">
+          <div className="fund-modal__dialog">
+            <div className="fund-modal__header">
+              <h4>Add Funds</h4>
+              <button
+                className="fund-modal__close"
+                onClick={closeFundModal}
+                aria-label="Close fund modal"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="fund-modal__content">
+              <p className="fund-modal__description">
+                Enter the amount of USD you’d like to on-ramp through Coinbase.
+                Minimum $3, maximum $30.
+              </p>
+
+              <label className="fund-modal__label">
+                Amount (USD)
+                <input
+                  type="number"
+                  min="3"
+                  max="30"
+                  step="0.01"
+                  value={fundAmount}
+                  onChange={(e) => setFundAmount(e.target.value)}
+                  className="fund-modal__input"
+                />
+              </label>
+
+              {fundError && (
+                <div className="fund-modal__error">{fundError}</div>
+              )}
+
+              <div className="fund-modal__actions">
+                <button
+                  className="fund-cancel"
+                  onClick={closeFundModal}
+                  disabled={isFunding}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="fund-confirm"
+                  onClick={handleFundSubmit}
+                  disabled={isFunding}
+                >
+                  {isFunding ? "Launching..." : "Proceed to Coinbase"}
                 </button>
               </div>
             </div>

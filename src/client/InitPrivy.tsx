@@ -32,20 +32,11 @@ export function initializePrivy() {
     "wallet-button-container",
   );
   if (!walletButtonContainer) {
-    // Find the connect-wallet button and replace it with our container
-    const connectWalletButton = document.getElementById("connect-wallet");
-    if (connectWalletButton) {
+    const anchor = document.getElementById("wallet-button-anchor");
+    if (anchor) {
       walletButtonContainer = document.createElement("div");
       walletButtonContainer.id = "wallet-button-container";
-      walletButtonContainer.style.cssText = `
-        width: 100%;
-        margin-bottom: 1rem;
-      `;
-      connectWalletButton.parentNode?.insertBefore(
-        walletButtonContainer,
-        connectWalletButton,
-      );
-      connectWalletButton.remove();
+      anchor.appendChild(walletButtonContainer);
     } else {
       // Fallback: add to body
       walletButtonContainer = document.createElement("div");

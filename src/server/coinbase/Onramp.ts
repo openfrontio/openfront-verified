@@ -194,7 +194,7 @@ export async function createCoinbaseOnrampUrl(
     }
 
     if (typeof fiatAmount === "number" && !Number.isNaN(fiatAmount)) {
-      const constrained = Math.min(Math.max(fiatAmount, 5), 25000);
+      const constrained = Math.min(Math.max(fiatAmount, 3), 25000);
       url.searchParams.set("presetFiatAmount", constrained.toFixed(2));
       url.searchParams.set("fiatCurrency", "USD");
     }

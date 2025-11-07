@@ -201,6 +201,10 @@
         </div>
       </div>
     </header>
+    <div
+      id="wallet-button-anchor"
+      class="fixed top-4 right-4 z-[9999] flex flex-col gap-3"
+    ></div>
     <div class="bg-image"></div>
 
     <gutter-ads></gutter-ads>
@@ -208,13 +212,6 @@
     <!-- Main container with responsive padding -->
     <main class="flex justify-center flex-grow">
       <div class="container pt-12">
-        <token-login class="w-[20%] md:w-[15%]"></token-login>
-        <o-button
-          id="connect-wallet"
-          title="Connect your wallet"
-          block
-        ></o-button>
-
         <div class="container__row">
           <flag-input class="w-[20%] md:w-[20%]"></flag-input>
           <territory-patterns-modal class="w-[20%] md:w-[15%]">
@@ -232,12 +229,6 @@
         <div></div>
         <div class="container__row container__row--equal">
           <o-button
-            id="create-tournament-button"
-            title="Create Tournament"
-            block
-            secondary
-          ></o-button>
-          <o-button
             id="browse-lobby-button"
             title="Browse Tournaments"
             block
@@ -249,14 +240,17 @@
             block
             secondary
           ></o-button>
-          <!-- <o-button
-            id="chat-button"
-            title="Chat Test"
+        </div>
+        <div
+          class="container__row container__row--equal"
+          style="margin-top: 12px"
+        >
+          <o-button
+            id="create-tournament-button"
+            title="Create Tournament"
             block
             secondary
-          ></o-button> -->
-        </div>
-        <div class="container__row" style="margin-top: 12px">
+          ></o-button>
           <o-button
             id="sponsor-tournament-button"
             title="Sponsor Tournament"
@@ -368,26 +362,27 @@
               class="ml-2 mr-4"
             />
           </a>
-          <a
-            href="/privacy-policy.html"
-            data-i18n="main.privacy_policy"
-            class="t-link"
-            target="_blank"
-          >
-            Privacy Policy
-          </a>
-          <a
-            href="/terms-of-service.html"
-            data-i18n="main.terms_of_service"
-            class="t-link"
-            target="_blank"
-          >
-            Terms of Service
-          </a>
+          <div class="l-footer__links">
+            <a
+              href="/privacy-policy.html"
+              data-i18n="main.privacy_policy"
+              class="t-link"
+              target="_blank"
+            >
+              Privacy Policy
+            </a>
+            <a
+              href="/terms-of-service.html"
+              data-i18n="main.terms_of_service"
+              class="t-link"
+              target="_blank"
+            >
+              Terms of Service
+            </a>
+          </div>
         </div>
       </div>
     </footer>
-    <account-button></account-button>
     <!-- Game modals and overlays -->
     <create-tournament-modal></create-tournament-modal>
     <join-private-tournament-modal></join-private-tournament-modal>

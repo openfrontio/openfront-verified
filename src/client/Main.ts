@@ -522,7 +522,6 @@ class Client {
           "language-modal",
           "news-modal",
           "flag-input-modal",
-          "account-button",
           "token-login",
         ].forEach((tag) => {
           const modal = document.querySelector(tag) as HTMLElement & {

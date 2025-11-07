@@ -119,7 +119,7 @@ export async function startWorker() {
             return Number.isFinite(num) ? num : undefined;
           }
           return undefined;
-        }, z.number().min(5).max(25000))
+        }, z.number().min(3).max(25000))
         .optional(),
     })
     .transform((value) => ({

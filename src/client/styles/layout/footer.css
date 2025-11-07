@@ -21,4 +21,12 @@
 .l-footer__col {
   display: flex;
   gap: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.l-footer__links {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
 }

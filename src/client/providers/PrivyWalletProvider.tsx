@@ -1,4 +1,9 @@
-import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
+import {
+  PrivyProvider,
+  usePrivy,
+  useSendTransaction,
+  useWallets,
+} from "@privy-io/react-auth";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useEffect } from "react";
 import { base } from "viem/chains";
@@ -49,6 +54,7 @@ function WalletStateSync() {
   const embedded =
     wallets.find((w) => (w as any)?.walletClientType === "privy") ?? wallets[0];
   const address = embedded?.address;
+  const { sendTransaction } = useSendTransaction();
 
   // Sync wallet state with the WalletManager
   useEffect(() => {
@@ -62,7 +68,7 @@ function WalletStateSync() {
     }
   }, [address, authenticated, user]);
 
-  // Expose methods to window for non-React components
+  // Expose Privy helpers to non-React modules
   useEffect(() => {
     window.privyWallet = {
       login: async () => {
@@ -90,6 +96,29 @@ function WalletStateSync() {
       isAuthenticated: () => authenticated,
       getUser: () => user,
       getEmbeddedProvider: async () => embedded?.getEthereumProvider(),
+      sendSponsoredTransaction: async (tx: {
+        to?: `0x${string}`;
+        data?: `0x${string}`;
+        value?: bigint;
+        gas?: bigint;
+      }) => {
+        if (!embedded) {
+          throw new Error("Embedded Privy wallet unavailable");
+        }
+
+        const request: any = { wallet: embedded };
+
+        if (tx.to) request.to = tx.to;
+        if (typeof tx.value !== "undefined") request.value = tx.value;
+        if (tx.data) request.data = tx.data;
+        if (typeof tx.gas !== "undefined") request.gas = tx.gas;
+
+        const { hash } = await sendTransaction(request, {
+          sponsor: true,
+        });
+
+        return hash;
+      },
     };
 
     // Dispatch custom event when wallet state changes
@@ -98,7 +127,16 @@ function WalletStateSync() {
         detail: { address, authenticated, user },
       }),
     );
-  }, [embedded, address, authenticated, user, login, logout, connectWallet]);
+  }, [
+    embedded,
+    address,
+    authenticated,
+    user,
+    login,
+    logout,
+    connectWallet,
+    sendTransaction,
+  ]);
 
   return null;
 }
@@ -146,6 +184,12 @@ declare global {
       isAuthenticated: () => boolean;
       getUser: () => any;
       getEmbeddedProvider: () => Promise<any | undefined>;
+      sendSponsoredTransaction?: (tx: {
+        to?: `0x${string}`;
+        data?: `0x${string}`;
+        value?: bigint;
+        gas?: bigint;
+      }) => Promise<`0x${string}`>;
     };
   }
 }

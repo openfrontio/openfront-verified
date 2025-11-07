@@ -1,7 +1,5 @@
 import {
   createPublicClient,
-  createWalletClient,
-  custom,
   encodeFunctionData,
   formatEther,
   formatUnits,
@@ -39,17 +37,24 @@ const publicClient = createPublicClient({
   chain: base,
   transport: RPC_URL ? http(RPC_URL) : http(),
 });
-let walletClientCache: any | null = null;
 
-async function getWalletClient() {
-  if (walletClientCache) return walletClientCache;
-  const provider = await window.privyWallet?.getEmbeddedProvider?.();
-  if (!provider) throw new Error("Embedded wallet provider unavailable");
-  walletClientCache = createWalletClient({
-    chain: base,
-    transport: custom(provider),
-  });
-  return walletClientCache;
+type SponsoredTransactionInput = {
+  to?: `0x${string}`;
+  data?: `0x${string}`;
+  value?: bigint;
+  gas?: bigint;
+};
+
+function getSponsoredSender(): (
+  tx: SponsoredTransactionInput,
+) => Promise<`0x${string}`> {
+  const sender = window.privyWallet?.sendSponsoredTransaction;
+  if (!sender) {
+    throw new Error(
+      "Privy gas sponsorship unavailable. Ensure Privy provider initialized.",
+    );
+  }
+  return sender;
 }
 
 async function wagmiRead(params: {
@@ -72,29 +77,38 @@ async function wagmiWrite(params: {
   const walletManager = WalletManager.getInstance();
   const account = walletManager.address as `0x${string}` | undefined;
   if (!account) throw new Error("No connected wallet");
-  const client = await getWalletClient();
 
-  const { address, abi, functionName, args, value } = params;
+  const { address, abi, functionName, args, value, gas } = params;
   const data = encodeFunctionData({
     abi,
     functionName,
     args: args ?? [],
   });
 
-  const request: any = {
-    account,
-    chain: base,
+  const sendSponsored = getSponsoredSender();
+
+  const txRequest: {
+    to: `0x${string}`;
+    data?: `0x${string}`;
+    value?: bigint;
+    gas?: bigint;
+  } = {
     to: address,
-    data,
   };
 
-  if (typeof value !== "undefined") {
-    request.value = value;
+  if (data && data !== "0x") {
+    txRequest.data = data as `0x${string}`;
   }
 
-  return await client.sendTransaction(request, {
-    sponsor: true,
-  });
+  if (typeof value !== "undefined") {
+    txRequest.value = value;
+  }
+
+  if (typeof gas !== "undefined") {
+    txRequest.gas = gas;
+  }
+
+  return (await sendSponsored(txRequest)) as Hash;
 }
 
 function wagmiWatch(params: {
@@ -265,19 +279,13 @@ async function sendNativeTransaction(to: `0x${string}`, value: bigint) {
   const walletManager = WalletManager.getInstance();
   const account = walletManager.address as `0x${string}` | undefined;
   if (!account) throw new Error("No connected wallet");
-  const client = await getWalletClient();
 
-  const request: any = {
-    account,
-    chain: base,
+  const sendSponsored = getSponsoredSender();
+
+  return (await sendSponsored({
     to,
     value,
-    data: "0x",
-  };
-
-  return await client.sendTransaction(request, {
-    sponsor: true,
-  });
+  })) as Hash;
 }
 
 export async function withdrawAsset(params: {
@@ -446,11 +454,15 @@ async function ensureErc20Allowance(params: {
     current: currentAllowance.toString(),
   });
 
-  await wagmiWrite({
+  const hash = await wagmiWrite({
     address: token,
     abi: ERC20_ABI,
     functionName: "approve",
     args: [CONTRACT_ADDRESS, amount],
+  });
+
+  await publicClient.waitForTransactionReceipt({
+    hash,
   });
 }
 
