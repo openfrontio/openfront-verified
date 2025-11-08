@@ -4,6 +4,28 @@ pragma solidity ^0.8.19;
 import "forge-std/Script.sol";
 import "../src/Openfront.sol";
 
+/**
+ * @title ChangeFeeRecipient
+ * @notice Script to update the protocol fee recipient address on the Openfront contract.
+ * @dev Only callable by the contract owner.
+ * 
+ * Usage:
+ *   forge script script/ChangeFeeRecipient.s.sol \
+ *     --rpc-url $RPC_URL \
+ *     --broadcast \
+ *     --verify
+ * 
+ * Required environment variables:
+ *   PRIVATE_KEY           - Owner's private key
+ *   OPENFRONT_CONTRACT    - Deployed Openfront contract address
+ *   NEW_FEE_RECIPIENT     - New address to receive protocol fees
+ * 
+ * Example:
+ *   export PRIVATE_KEY=0x...
+ *   export OPENFRONT_CONTRACT=0x197354873c9e9e29A24c78805B8a6b18a1bf4697
+ *   export NEW_FEE_RECIPIENT=0x1234567890123456789012345678901234567890
+ *   forge script script/ChangeFeeRecipient.s.sol --rpc-url https://mainnet.base.org --broadcast
+ */
 contract ChangeFeeRecipient is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");

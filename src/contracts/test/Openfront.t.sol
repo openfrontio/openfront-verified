@@ -803,9 +803,9 @@ contract OpenfrontTest is Test {
 
         assertEq(openfront.protocolFeeBps(), 500);
 
-        // Cannot set fee > 100%
+        // Cannot set fee > 50%
         vm.expectRevert(IOpenfront.InvalidAmount.selector);
-        openfront.setProtocolFee(10001);
+        openfront.setProtocolFee(5001);
 
         // Non-owner cannot set fee
         vm.prank(attacker);

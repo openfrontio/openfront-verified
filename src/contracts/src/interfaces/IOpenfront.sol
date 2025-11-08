@@ -392,7 +392,7 @@ interface IOpenfront {
 
     /**
      * @notice Set the protocol fee percentage.
-     * @dev Only callable by contract owner. Fee is in basis points (0-10000).
+     * @dev Only callable by contract owner. Fee is in basis points (0-5000, max 50%).
      * @param feeBps Fee percentage in basis points (e.g., 500 = 5%).
      */
     function setProtocolFee(uint256 feeBps) external;

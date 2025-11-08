@@ -4,13 +4,43 @@ pragma solidity ^0.8.19;
 import "forge-std/Script.sol";
 import "../src/Openfront.sol";
 
+/**
+ * @title ChangeProtocolFee
+ * @notice Script to update the protocol fee percentage on the Openfront contract.
+ * @dev Only callable by the contract owner. Fee is expressed in basis points (0-5000, max 50%).
+ * 
+ * Usage:
+ *   forge script script/ChangeProtocolFee.s.sol \
+ *     --rpc-url $RPC_URL \
+ *     --broadcast \
+ *     --verify
+ * 
+ * Required environment variables:
+ *   PRIVATE_KEY           - Owner's private key
+ *   OPENFRONT_CONTRACT    - Deployed Openfront contract address
+ *   NEW_FEE_BPS           - New fee in basis points (0-5000, where 5000 = 50% max)
+ * 
+ * Common fee values:
+ *   100 bps  = 1%
+ *   250 bps  = 2.5%
+ *   500 bps  = 5%
+ *   1000 bps = 10%
+ *   2000 bps = 20%
+ *   5000 bps = 50% (maximum allowed)
+ * 
+ * Example (set 5% fee):
+ *   export PRIVATE_KEY=0x...
+ *   export OPENFRONT_CONTRACT=0x197354873c9e9e29A24c78805B8a6b18a1bf4697
+ *   export NEW_FEE_BPS=500
+ *   forge script script/ChangeProtocolFee.s.sol --rpc-url https://mainnet.base.org --broadcast
+ */
 contract ChangeProtocolFee is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address openfrontAddress = vm.envAddress("OPENFRONT_CONTRACT");
         uint256 newFeeBps = vm.envUint("NEW_FEE_BPS");
 
-        require(newFeeBps <= 10000, "Fee cannot exceed 100% (10000 bps)");
+        require(newFeeBps <= 5000, "Fee cannot exceed 50% (5000 bps)");
 
         Openfront openfront = Openfront(openfrontAddress);
 

@@ -366,7 +366,7 @@ contract Openfront is ReentrancyGuard, Ownable, IOpenfront {
 
     /// @inheritdoc IOpenfront
     function setProtocolFee(uint256 feeBps) external override onlyOwner {
-        require(feeBps <= 10000, InvalidAmount());
+        require(feeBps <= 5000, InvalidAmount()); // Max 50%
         uint256 oldFee = protocolFeeBps;
         protocolFeeBps = feeBps;
         emit ProtocolFeeUpdated(oldFee, feeBps);
