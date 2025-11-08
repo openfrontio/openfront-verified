@@ -4,9 +4,12 @@ import randomMap from "../../resources/images/RandomMap.webp";
 import { getServerConfigFromClient } from "../core/configuration/ConfigLoader";
 import {
   Difficulty,
+  Duos,
   GameMapSize,
   GameMapType,
   GameMode,
+  Quads,
+  Trios,
   UnitType,
   mapCategories,
 } from "../core/game/Game";
@@ -37,6 +40,18 @@ import "./styles.css";
 import { renderUnitTypeOptions } from "./utilities/RenderUnitTypeOptions";
 import { translateText } from "./Utils";
 
+const TEAM_COUNT_OPTIONS: TeamCountConfig[] = [
+  Duos,
+  Trios,
+  Quads,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+];
+
 @customElement("create-tournament-modal")
 export class CreateTournamentModal extends LitElement {
   @query("o-modal") private modalEl!: HTMLElement & {
@@ -47,7 +62,7 @@ export class CreateTournamentModal extends LitElement {
   @state() private selectedDifficulty: Difficulty = Difficulty.Medium;
   @state() private disableNPCs = false;
   @state() private gameMode: GameMode = GameMode.FFA;
-  @state() private teamCount: TeamCountConfig = 2;
+  @state() private teamCount: TeamCountConfig = Duos;
   @state() private bots: number = 400;
   @state() private infiniteGold: boolean = false;
   @state() private donateGold: boolean = false;
@@ -575,8 +590,43 @@ export class CreateTournamentModal extends LitElement {
                   ${translateText("game_mode.ffa")}
                 </div>
               </div>
+              <div
+                class="option-card ${this.gameMode === GameMode.Team ? "selected" : ""}"
+                @click=${() => this.handleGameModeSelection(GameMode.Team)}
+              >
+                <div class="option-card-title">
+                  ${translateText("game_mode.teams")}
+                </div>
+              </div>
             </div>
           </div>
+
+          ${
+            this.gameMode === GameMode.Team
+              ? html`
+                  <div class="options-section">
+                    <div class="option-title">Team Format</div>
+                    <div class="option-cards">
+                      ${TEAM_COUNT_OPTIONS.map(
+                        (option) => html`
+                          <div
+                            class="option-card ${this.teamCount === option
+                              ? "selected"
+                              : ""}"
+                            @click=${() =>
+                              this.handleTeamCountSelection(option)}
+                          >
+                            <div class="option-card-title">
+                              ${this.formatTeamCountOption(option)}
+                            </div>
+                          </div>
+                        `,
+                      )}
+                    </div>
+                  </div>
+                `
+              : ""
+          }
 
           <!-- Game Options -->
           <div class="options-section">
@@ -1207,6 +1257,19 @@ export class CreateTournamentModal extends LitElement {
     this.putGameConfig();
   }
 
+  private formatTeamCountOption(value: TeamCountConfig): string {
+    if (value === Duos) {
+      return "Duos (teams of 2)";
+    }
+    if (value === Trios) {
+      return "Trios (teams of 3)";
+    }
+    if (value === Quads) {
+      return "Quads (teams of 4)";
+    }
+    return `${value} Teams`;
+  }
+
   private async handleGameModeSelection(value: GameMode) {
     this.gameMode = value;
     this.putGameConfig();
@@ -1233,7 +1296,7 @@ export class CreateTournamentModal extends LitElement {
       instantBuild: this.instantBuild,
       gameMode: this.gameMode,
       disabledUnits: this.disabledUnits,
-      playerTeams: this.teamCount,
+      playerTeams: this.gameMode === GameMode.Team ? this.teamCount : undefined,
     } satisfies Partial<GameConfig>;
 
     console.log(

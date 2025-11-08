@@ -1,5 +1,6 @@
 import { LitElement, html } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
+import { formatUnits } from "viem";
 import { getServerConfigFromClient } from "../core/configuration/ConfigLoader";
 import type { ClientInfo, GameInfo } from "../core/Schemas";
 import { generateID } from "../core/Util";
@@ -56,6 +57,10 @@ export class OpenGamesModal extends LitElement {
     if (this.isInWaitingRoom) {
       return;
     }
+    this.forceClose();
+  }
+
+  public forceClose() {
     this.modalEl?.close();
     if (this.refreshTimer !== null) {
       clearInterval(this.refreshTimer);
@@ -156,6 +161,31 @@ export class OpenGamesModal extends LitElement {
         2000,
       );
     } catch (e: any) {
+      if ((e as any)?.code === "INSUFFICIENT_BALANCE") {
+        const errorData = e as any;
+        const shortfallUSD = Number(
+          formatUnits(errorData.shortfall, errorData.decimals),
+        ).toFixed(2);
+        this.error = `${e.message}\n\nWould you like to add funds to your wallet?`;
+        this.joiningLobbyId = null;
+        this.joinedLobbyId = null;
+
+        const confirmed = confirm(
+          `${e.message}\n\nMinimum deposit: $${Math.max(5, Math.ceil(Number(shortfallUSD)))}.\n\nClick OK to open the funding modal.`,
+        );
+
+        if (confirmed) {
+          window.dispatchEvent(
+            new CustomEvent("open-fund-modal", {
+              detail: {
+                suggestedAmount: Math.max(5, Math.ceil(Number(shortfallUSD))),
+              },
+            }),
+          );
+        }
+        return;
+      }
+
       this.error = e?.message ?? String(e);
       this.joiningLobbyId = null;
       this.joinedLobbyId = null;

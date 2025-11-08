@@ -1,6 +1,6 @@
 import { LitElement, html } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
-import { formatEther, formatUnits } from "viem";
+import { formatUnits } from "viem";
 import type { ServerConfig } from "../core/configuration/Config";
 import { getServerConfigFromClient } from "../core/configuration/ConfigLoader";
 import type { ClientInfo, GameConfig, GameInfo } from "../core/Schemas";
@@ -269,6 +269,32 @@ export class JoinPrivateTournamentModal extends LitElement {
       );
     } catch (err: any) {
       console.error("Failed to join tournament:", err);
+
+      if ((err as any)?.code === "INSUFFICIENT_BALANCE") {
+        const errorData = err as any;
+        const shortfallUSD = Number(
+          formatUnits(errorData.shortfall, errorData.decimals),
+        ).toFixed(2);
+        this.error = `${err.message}\n\nWould you like to add funds to your wallet?`;
+
+        const confirmed = confirm(
+          `${err.message}\n\nMinimum deposit: $${Math.max(5, Math.ceil(Number(shortfallUSD)))}.\n\nClick OK to open the funding modal.`,
+        );
+
+        if (confirmed) {
+          window.dispatchEvent(
+            new CustomEvent("open-fund-modal", {
+              detail: {
+                suggestedAmount: Math.max(5, Math.ceil(Number(shortfallUSD))),
+              },
+            }),
+          );
+        }
+        this.joined = false;
+        this.joining = false;
+        return;
+      }
+
       this.error = err?.message ?? "Unable to join tournament.";
       this.joined = false;
     } finally {
@@ -478,9 +504,7 @@ export class JoinPrivateTournamentModal extends LitElement {
   }
 
   private formatAmount(value: bigint, info: LobbyInfo): string {
-    const formatted = info.isNative
-      ? formatEther(value)
-      : formatUnits(value, info.wagerDecimals);
+    const formatted = formatUnits(value, info.wagerDecimals);
     return `${formatted} ${info.wagerSymbol}`;
   }
 

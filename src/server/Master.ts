@@ -5,13 +5,10 @@ import http from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import { getServerConfigFromServer } from "../core/configuration/ConfigLoader";
-import { GameInfo, ID } from "../core/Schemas";
-import { generateID } from "../core/Util";
+import { ID } from "../core/Schemas";
 import { logger } from "./Logger";
-import { MapPlaylist } from "./MapPlaylist";
 
 const config = getServerConfigFromServer();
-const playlist = new MapPlaylist();
 const readyWorkers = new Set();
 
 const app = express();
@@ -96,9 +93,7 @@ app.all("/api/wallet/*", async (req, res) => {
   }
 });
 
-let publicLobbiesJsonStr = "";
-
-const publicLobbyIDs: Set<string> = new Set();
+const publicLobbiesJsonStr = JSON.stringify({ lobbies: [] });
 
 // Start the master process
 export async function startMaster() {
@@ -127,24 +122,9 @@ export async function startMaster() {
       log.info(
         `Worker ${workerId} is ready. (${readyWorkers.size}/${config.numWorkers()} ready)`,
       );
-      // Start scheduling when all workers are ready
       if (readyWorkers.size === config.numWorkers()) {
-        log.info("All workers ready, starting game scheduling");
-
-        const scheduleLobbies = () => {
-          schedulePublicGame(playlist).catch((error) => {
-            log.error("Error scheduling public game:", error);
-          });
-        };
-
-        setInterval(
-          () =>
-            fetchLobbies().then((lobbies) => {
-              if (lobbies === 0) {
-                scheduleLobbies();
-              }
-            }),
-          100,
+        log.info(
+          "All workers ready. Automatic public lobby generation disabled.",
         );
       }
     }
@@ -226,108 +206,6 @@ app.post("/api/kick_player/:gameID/:clientID", async (req, res) => {
     res.status(500).send("Failed to kick player");
   }
 });
-
-async function fetchLobbies(): Promise<number> {
-  const fetchPromises: Promise<GameInfo | null>[] = [];
-
-  for (const gameID of new Set(publicLobbyIDs)) {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), 5000); // 5 second timeout
-    const port = config.workerPort(gameID);
-    const promise = fetch(`http://localhost:${port}/api/game/${gameID}`, {
-      headers: { [config.adminHeader()]: config.adminToken() },
-      signal: controller.signal,
-    })
-      .then((resp) => resp.json())
-      .then((json) => {
-        return json as GameInfo;
-      })
-      .catch((error) => {
-        log.error(`Error fetching game ${gameID}:`, error);
-        // Return null or a placeholder if fetch fails
-        publicLobbyIDs.delete(gameID);
-        return null;
-      });
-
-    fetchPromises.push(promise);
-  }
-
-  // Wait for all promises to resolve
-  const results = await Promise.all(fetchPromises);
-
-  // Filter out any null results from failed fetches
-  const lobbyInfos: GameInfo[] = results
-    .filter((result) => result !== null)
-    .map((gi: GameInfo) => {
-      return {
-        gameID: gi.gameID,
-        numClients: gi?.clients?.length ?? 0,
-        gameConfig: gi.gameConfig,
-        msUntilStart: (gi.msUntilStart ?? Date.now()) - Date.now(),
-      } as GameInfo;
-    });
-
-  lobbyInfos.forEach((l) => {
-    if (
-      "msUntilStart" in l &&
-      l.msUntilStart !== undefined &&
-      l.msUntilStart <= 250
-    ) {
-      publicLobbyIDs.delete(l.gameID);
-      return;
-    }
-
-    if (
-      "gameConfig" in l &&
-      l.gameConfig !== undefined &&
-      "maxPlayers" in l.gameConfig &&
-      l.gameConfig.maxPlayers !== undefined &&
-      "numClients" in l &&
-      l.numClients !== undefined &&
-      l.gameConfig.maxPlayers <= l.numClients
-    ) {
-      publicLobbyIDs.delete(l.gameID);
-      return;
-    }
-  });
-
-  // Update the JSON string
-  publicLobbiesJsonStr = JSON.stringify({
-    lobbies: lobbyInfos,
-  });
-
-  return publicLobbyIDs.size;
-}
-
-// Function to schedule a new public game
-async function schedulePublicGame(playlist: MapPlaylist) {
-  const gameID = generateID();
-  publicLobbyIDs.add(gameID);
-
-  const workerPath = config.workerPath(gameID);
-
-  // Send request to the worker to start the game
-  try {
-    const response = await fetch(
-      `http://localhost:${config.workerPort(gameID)}/api/create_game/${gameID}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          [config.adminHeader()]: config.adminToken(),
-        },
-        body: JSON.stringify(playlist.gameConfig()),
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(`Failed to schedule public game: ${response.statusText}`);
-    }
-  } catch (error) {
-    log.error(`Failed to schedule public game on worker ${workerPath}:`, error);
-    throw error;
-  }
-}
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function sleep(ms: number): Promise<void> {

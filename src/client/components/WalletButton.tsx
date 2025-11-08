@@ -1,8 +1,13 @@
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { isAddress, parseEther, parseUnits } from "viem";
+import { formatUnits, isAddress, parseEther, parseUnits } from "viem";
 import { USD_TOKEN_ADDRESS } from "../constants/Config";
-import { getTokenBalances, withdrawAsset } from "../Contract";
+import {
+  getClaimableBalance,
+  getTokenBalances,
+  withdrawAsset,
+  withdrawWinnings,
+} from "../Contract";
 import { getAuthHeader } from "../jwt";
 import { getPersistentID } from "../Main";
 
@@ -32,6 +37,7 @@ export function WalletButton() {
   const [usdBalance, setUsdBalance] = useState<string>("—");
   const [usdBalanceRaw, setUsdBalanceRaw] = useState<bigint>(0n);
   const [usdDecimals, setUsdDecimals] = useState<number>(6);
+  const [claimableBalance, setClaimableBalance] = useState<bigint>(0n);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const balanceMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -43,10 +49,14 @@ export function WalletButton() {
           if (!cancelled) {
             setUsdBalance("—");
             setUsdBalanceRaw(0n);
+            setClaimableBalance(0n);
           }
           return;
         }
-        const balances = await getTokenBalances(address as `0x${string}`);
+        const [balances, claimable] = await Promise.all([
+          getTokenBalances(address as `0x${string}`),
+          getClaimableBalance(address as `0x${string}`, USD_TOKEN_ADDRESS),
+        ]);
         const usd =
           balances.find((b) => b.token === USD_TOKEN_ADDRESS) ??
           balances.find((b) => b.symbol === "USDC" || b.symbol === "USD");
@@ -58,6 +68,9 @@ export function WalletButton() {
           setUsdBalance("—");
           setUsdBalanceRaw(0n);
           setUsdDecimals(6);
+        }
+        if (!cancelled) {
+          setClaimableBalance(claimable);
         }
       } catch (_e) {
         console.debug("Balance fetch failed, keeping last known values");
@@ -245,6 +258,19 @@ export function WalletButton() {
     setFundError(null);
     setFundMessage(null);
     setIsFundModalOpen(true);
+  };
+
+  const handleWithdrawWinnings = async () => {
+    setIsBalanceMenuOpen(false);
+    try {
+      const result = await withdrawWinnings(USD_TOKEN_ADDRESS);
+      alert(
+        `Withdrew ${formatUnits(result.amount, usdDecimals)} ${result.tokenSymbol} to your wallet!`,
+      );
+      setRefreshTrigger((t) => t + 1);
+    } catch (error: any) {
+      alert(error?.message ?? "Failed to withdraw winnings.");
+    }
   };
 
   const resetWithdrawState = () => {
@@ -454,32 +480,46 @@ export function WalletButton() {
                   <span className="item-label">USDC Balance:</span>
                   <span className="item-value">{usdBalance} USD</span>
                 </div>
+                <div className="dropdown-item">
+                  <span className="item-label">Unclaimed Prizes:</span>
+                  <span className="item-value">
+                    {claimableBalance > 0n
+                      ? `${formatUnits(claimableBalance, usdDecimals)} USDC`
+                      : "0 USDC"}
+                  </span>
+                </div>
               </>
             )}
 
             <div className="dropdown-divider"></div>
-            <button className="logout-button" onClick={handleCopyAddress}>
-              <svg
-                className="logout-icon"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
+
+            {claimableBalance > 0n && (
+              <button
+                className="action-button claim-button"
+                onClick={handleWithdrawWinnings}
               >
-                <path
-                  d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"
-                  fill="currentColor"
-                />
-              </svg>
-              {copied ? "Copied!" : "Copy Address"}
-            </button>
+                <svg
+                  className="action-icon"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                    fill="currentColor"
+                  />
+                </svg>
+                Claim Prizes
+              </button>
+            )}
 
             <button
-              className="logout-button fund-button"
+              className="action-button deposit-button"
               onClick={beginFundFlow}
               disabled={isFunding}
             >
               <svg
-                className="logout-icon"
+                className="action-icon"
                 viewBox="0 0 24 24"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
@@ -492,26 +532,18 @@ export function WalletButton() {
                   strokeLinejoin="round"
                 />
               </svg>
-              Fund Wallet
+              Deposit
             </button>
 
-            {fundMessage && (
-              <div className="dropdown-item fund-message">
-                <span className="item-value">{fundMessage}</span>
-              </div>
-            )}
-
-            <div className="dropdown-divider"></div>
-
             <button
-              className="logout-button withdraw-trigger"
+              className="action-button withdraw-button"
               onClick={() => {
                 setShowDropdown(false);
                 beginWithdrawFlow();
               }}
             >
               <svg
-                className="logout-icon"
+                className="action-icon"
                 viewBox="0 0 24 24"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
@@ -529,9 +561,30 @@ export function WalletButton() {
 
             <div className="dropdown-divider"></div>
 
-            <button className="logout-button" onClick={handleLogout}>
+            <button
+              className="utility-button copy-button"
+              onClick={handleCopyAddress}
+            >
               <svg
-                className="logout-icon"
+                className="utility-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"
+                  fill="currentColor"
+                />
+              </svg>
+              {copied ? "Copied!" : "Copy Address"}
+            </button>
+
+            <button
+              className="utility-button logout-button"
+              onClick={handleLogout}
+            >
+              <svg
+                className="utility-icon"
                 viewBox="0 0 24 24"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
@@ -574,7 +627,6 @@ export function WalletButton() {
                   }
                   className="withdraw-modal__select"
                 >
-                  <option value="ETH">ETH (native)</option>
                   <option value="USDC">USDC (Base)</option>
                 </select>
               </label>
@@ -668,6 +720,10 @@ export function WalletButton() {
 
               {fundError && (
                 <div className="fund-modal__error">{fundError}</div>
+              )}
+
+              {fundMessage && (
+                <div className="fund-modal__message">{fundMessage}</div>
               )}
 
               <div className="fund-modal__actions">

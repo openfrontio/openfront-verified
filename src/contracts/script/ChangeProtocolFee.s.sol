@@ -30,7 +30,7 @@ import "../src/Openfront.sol";
  * 
  * Example (set 5% fee):
  *   export PRIVATE_KEY=0x...
- *   export OPENFRONT_CONTRACT=0x197354873c9e9e29A24c78805B8a6b18a1bf4697
+ *   export OPENFRONT_CONTRACT=0x343e2663b37A9CFC347e529dC8E97367D09Ee612
  *   export NEW_FEE_BPS=500
  *   forge script script/ChangeProtocolFee.s.sol --rpc-url https://mainnet.base.org --broadcast
  */

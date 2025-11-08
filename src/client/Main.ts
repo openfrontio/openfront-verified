@@ -527,11 +527,17 @@ class Client {
           const element = document.querySelector(tag) as
             | (HTMLElement & {
                 close?: () => void;
+                forceClose?: () => void;
                 isModalOpen?: boolean;
               })
             | null;
 
           if (!element) {
+            return;
+          }
+
+          if (typeof element.forceClose === "function") {
+            element.forceClose();
             return;
           }
 

@@ -342,43 +342,50 @@ export async function startGameOnChainAndConfirm(
   }
 }
 
-export async function declareWinnerOnChain(
+export async function declareWinnersOnChain(
   lobbyId: string,
-  winnerAddress: Address,
+  winnerAddresses: Address[],
+  payoutWeights?: number[],
 ): Promise<string | null> {
   try {
     if (!serverAccount) {
       log.error(
-        "Cannot declare winner: no server account (mnemonic not configured)",
+        "Cannot declare winners: no server account (mnemonic not configured)",
       );
       return null;
     }
 
-    log.info("Declaring winner on-chain", {
+    log.info("Declaring winners on-chain", {
       lobbyId,
-      winnerAddress,
+      winnerAddresses,
+      payoutWeights: payoutWeights ?? "equal split",
+      winnerCount: winnerAddresses.length,
       serverAccount: serverAccount.address,
       contractAddress: CONTRACT_ADDRESS,
     });
 
     const lobbyIdBytes32 = stringToBytes32(lobbyId);
+    const normalizedWinners = winnerAddresses.map((addr) => getAddress(addr));
+    const weights = payoutWeights ?? [];
     const maxAttempts = 3;
     let lastError: unknown = null;
 
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        log.info(`Attempt ${i + 1}/${maxAttempts} to call declareWinner`, {
+        log.info(`Attempt ${i + 1}/${maxAttempts} to call declareWinners`, {
           lobbyId,
+          winnerCount: normalizedWinners.length,
         });
 
         const hash = await submitRawContractWrite({
-          functionName: "declareWinner",
-          args: [lobbyIdBytes32, getAddress(winnerAddress)],
+          functionName: "declareWinners",
+          args: [lobbyIdBytes32, normalizedWinners, weights],
         });
 
         log.info("Transaction submitted", {
           lobbyId,
           txHash: hash,
+          winnerCount: normalizedWinners.length,
         });
 
         return hash;
@@ -392,20 +399,28 @@ export async function declareWinnerOnChain(
       }
     }
 
-    log.error("All attempts failed to declare winner", {
+    log.error("All attempts failed to declare winners", {
       lobbyId,
       error: lastError instanceof Error ? lastError.message : String(lastError),
     });
 
-    throw lastError ?? new Error("declareWinner write failed");
+    throw lastError ?? new Error("declareWinners write failed");
   } catch (e) {
-    log.error("declareWinnerOnChain exception", {
+    log.error("declareWinnersOnChain exception", {
       lobbyId,
       error: e instanceof Error ? e.message : String(e),
       stack: e instanceof Error ? e.stack : undefined,
     });
     return null;
   }
+}
+
+// Backward compatibility wrapper for single winner
+export async function declareWinnerOnChain(
+  lobbyId: string,
+  winnerAddress: Address,
+): Promise<string | null> {
+  return declareWinnersOnChain(lobbyId, [winnerAddress]);
 }
 
 export async function cancelLobbyOnChain(
@@ -488,17 +503,24 @@ export async function ejectParticipantOnChain(
 
 export async function declareWinnerOnChainAndConfirm(
   lobbyId: string,
-  winnerAddress: Address,
+  winnerAddresses: Address[],
+  payoutWeights?: number[],
 ): Promise<boolean> {
   try {
     log.info("Starting declareWinnerOnChainAndConfirm", {
       lobbyId,
-      winnerAddress,
+      winnerAddresses,
+      winnerCount: winnerAddresses.length,
+      payoutWeights: payoutWeights ?? "equal split",
     });
 
-    const hash = await declareWinnerOnChain(lobbyId, winnerAddress);
+    const hash = await declareWinnersOnChain(
+      lobbyId,
+      winnerAddresses,
+      payoutWeights,
+    );
     if (hash === null) {
-      log.error("declareWinnerOnChain returned null (transaction failed)", {
+      log.error("declareWinnersOnChain returned null (transaction failed)", {
         lobbyId,
       });
       return false;
@@ -531,12 +553,11 @@ export async function declareWinnerOnChainAndConfirm(
     }
 
     const info = await getLobbyInfo(lobbyId);
-    log.info("Verified lobby info after winner declaration", {
+    log.info("Verified lobby info after winners declaration", {
       lobbyId,
       status: info?.status,
       statusName: info ? GameStatus[info.status] : "N/A",
       winner: info?.winner,
-      expectedWinner: winnerAddress,
     });
 
     const success =
@@ -545,12 +566,13 @@ export async function declareWinnerOnChainAndConfirm(
       info.winner !== "0x0000000000000000000000000000000000000000";
 
     if (success) {
-      log.info("✅ Winner declaration CONFIRMED on-chain", {
+      log.info("✅ Winners declaration CONFIRMED on-chain", {
         lobbyId,
         winner: info.winner,
+        winnerCount: winnerAddresses.length,
       });
     } else {
-      log.error("❌ Winner declaration verification FAILED", {
+      log.error("❌ Winners declaration verification FAILED", {
         lobbyId,
         hasInfo: !!info,
         status: info?.status,

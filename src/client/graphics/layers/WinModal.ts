@@ -5,7 +5,12 @@ import { translateText } from "../../../client/Utils";
 import { EventBus } from "../../../core/EventBus";
 import { GameUpdateType } from "../../../core/game/GameUpdates";
 import { GameView } from "../../../core/game/GameView";
-import { GameStatus, claimPrize, getLobbyInfo } from "../../Contract";
+import {
+  GameStatus,
+  USD_TOKEN_ADDRESS,
+  getLobbyInfo,
+  withdrawWinnings,
+} from "../../Contract";
 import { SendWinnerEvent } from "../../Transport";
 import { WalletManager } from "../../Wallet";
 import { Layer } from "./Layer";
@@ -160,7 +165,7 @@ export class WinModal extends LitElement implements Layer {
     return html``;
   }
 
-  ofmDisplay(): TemplateResult {
+  ofmDisplay() {
     return html`
       <div class="text-center mb-6 bg-black/30 p-2.5 rounded">
         <h3 class="text-xl font-semibold text-white mb-3">
@@ -188,7 +193,7 @@ export class WinModal extends LitElement implements Layer {
     `;
   }
 
-  discordDisplay(): TemplateResult {
+  discordDisplay() {
     return html`
       <div class="text-center mb-6 bg-black/30 p-2.5 rounded">
         <h3 class="text-xl font-semibold text-white mb-3">
@@ -379,12 +384,11 @@ export class WinModal extends LitElement implements Layer {
     try {
       this.isClaiming = true;
       this.claimMsg = translateText("win_modal.claiming");
-      const lobbyId = this.game.gameID();
-      await claimPrize({ lobbyId });
-      this.claimMsg = translateText("win_modal.claim_success");
+      const result = await withdrawWinnings(USD_TOKEN_ADDRESS);
+      this.claimMsg = `Withdrew ${result.tokenSymbol} successfully!`;
       this.showClaimButton = false;
     } catch (e: any) {
-      this.claimMsg = e?.message ?? "Failed to claim prize.";
+      this.claimMsg = e?.message ?? "Failed to withdraw winnings.";
     } finally {
       this.isClaiming = false;
       this.requestUpdate();

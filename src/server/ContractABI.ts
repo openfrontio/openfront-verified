@@ -44,7 +44,7 @@ export const ContractABI = [
       },
     ],
     outputs: [],
-    stateMutability: "payable",
+    stateMutability: "nonpayable",
   },
   {
     type: "function",
@@ -61,34 +61,27 @@ export const ContractABI = [
   },
   {
     type: "function",
-    name: "ejectParticipant",
+    name: "claimableTokenBalances",
     inputs: [
       {
-        name: "lobbyId",
-        type: "bytes32",
-        internalType: "bytes32",
+        name: "",
+        type: "address",
+        internalType: "address",
       },
       {
-        name: "participant",
+        name: "",
         type: "address",
         internalType: "address",
       },
     ],
-    outputs: [],
-    stateMutability: "nonpayable",
-  },
-  {
-    type: "function",
-    name: "claimPrize",
-    inputs: [
+    outputs: [
       {
-        name: "lobbyId",
-        type: "bytes32",
-        internalType: "bytes32",
+        name: "",
+        type: "uint256",
+        internalType: "uint256",
       },
     ],
-    outputs: [],
-    stateMutability: "nonpayable",
+    stateMutability: "view",
   },
   {
     type: "function",
@@ -116,7 +109,7 @@ export const ContractABI = [
       },
     ],
     outputs: [],
-    stateMutability: "payable",
+    stateMutability: "nonpayable",
   },
   {
     type: "function",
@@ -135,6 +128,60 @@ export const ContractABI = [
     ],
     outputs: [],
     stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "declareWinners",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+      {
+        name: "winners",
+        type: "address[]",
+        internalType: "address[]",
+      },
+      {
+        name: "payoutWeights",
+        type: "uint256[]",
+        internalType: "uint256[]",
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "ejectParticipant",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+      {
+        name: "participant",
+        type: "address",
+        internalType: "address",
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "feeRecipient",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "address",
+        internalType: "address",
+      },
+    ],
+    stateMutability: "view",
   },
   {
     type: "function",
@@ -357,6 +404,30 @@ export const ContractABI = [
   },
   {
     type: "function",
+    name: "getWinners",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        internalType: "bytes32",
+      },
+    ],
+    outputs: [
+      {
+        name: "winners",
+        type: "address[]",
+        internalType: "address[]",
+      },
+      {
+        name: "payouts",
+        type: "uint256[]",
+        internalType: "uint256[]",
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "isAllowlistEnabled",
     inputs: [
       {
@@ -452,7 +523,7 @@ export const ContractABI = [
       },
     ],
     outputs: [],
-    stateMutability: "payable",
+    stateMutability: "nonpayable",
   },
   {
     type: "function",
@@ -479,11 +550,6 @@ export const ContractABI = [
         name: "status",
         type: "uint8",
         internalType: "enum Openfront.GameStatus",
-      },
-      {
-        name: "winner",
-        type: "address",
-        internalType: "address",
       },
       {
         name: "totalPrize",
@@ -526,6 +592,19 @@ export const ContractABI = [
         name: "",
         type: "bytes32",
         internalType: "bytes32",
+      },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "protocolFeeBps",
+    inputs: [],
+    outputs: [
+      {
+        name: "",
+        type: "uint256",
+        internalType: "uint256",
       },
     ],
     stateMutability: "view",
@@ -594,6 +673,19 @@ export const ContractABI = [
   },
   {
     type: "function",
+    name: "setFeeRecipient",
+    inputs: [
+      {
+        name: "recipient",
+        type: "address",
+        internalType: "address",
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "setGameServer",
     inputs: [
       {
@@ -643,6 +735,19 @@ export const ContractABI = [
   },
   {
     type: "function",
+    name: "setProtocolFee",
+    inputs: [
+      {
+        name: "feeBps",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "startGame",
     inputs: [
       {
@@ -665,6 +770,49 @@ export const ContractABI = [
       },
     ],
     outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "withdraw",
+    inputs: [
+      {
+        name: "token",
+        type: "address",
+        internalType: "address",
+      },
+      {
+        name: "amount",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    outputs: [
+      {
+        name: "withdrawn",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "withdrawAll",
+    inputs: [
+      {
+        name: "token",
+        type: "address",
+        internalType: "address",
+      },
+    ],
+    outputs: [
+      {
+        name: "withdrawn",
+        type: "uint256",
+        internalType: "uint256",
+      },
+    ],
     stateMutability: "nonpayable",
   },
   {
@@ -713,6 +861,25 @@ export const ContractABI = [
   },
   {
     type: "event",
+    name: "FeeRecipientUpdated",
+    inputs: [
+      {
+        name: "oldRecipient",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+      {
+        name: "newRecipient",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
     name: "GameFinished",
     inputs: [
       {
@@ -722,10 +889,53 @@ export const ContractABI = [
         internalType: "bytes32",
       },
       {
-        name: "winner",
+        name: "primaryWinner",
         type: "address",
         indexed: true,
         internalType: "address",
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "GameFinishedMulti",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        indexed: true,
+        internalType: "bytes32",
+      },
+      {
+        name: "winners",
+        type: "address[]",
+        indexed: false,
+        internalType: "address[]",
+      },
+      {
+        name: "payouts",
+        type: "uint256[]",
+        indexed: false,
+        internalType: "uint256[]",
+      },
+      {
+        name: "stakeToken",
+        type: "address",
+        indexed: false,
+        internalType: "address",
+      },
+      {
+        name: "totalPrize",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+      {
+        name: "feeAmount",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
       },
     ],
     anonymous: false,
@@ -821,25 +1031,6 @@ export const ContractABI = [
   },
   {
     type: "event",
-    name: "ParticipantJoined",
-    inputs: [
-      {
-        name: "lobbyId",
-        type: "bytes32",
-        indexed: true,
-        internalType: "bytes32",
-      },
-      {
-        name: "participant",
-        type: "address",
-        indexed: true,
-        internalType: "address",
-      },
-    ],
-    anonymous: false,
-  },
-  {
-    type: "event",
     name: "ParticipantEjected",
     inputs: [
       {
@@ -859,7 +1050,26 @@ export const ContractABI = [
   },
   {
     type: "event",
-    name: "PrizeClaimed",
+    name: "ParticipantJoined",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        indexed: true,
+        internalType: "bytes32",
+      },
+      {
+        name: "participant",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "PrizeBalanceIncreased",
     inputs: [
       {
         name: "lobbyId",
@@ -874,7 +1084,19 @@ export const ContractABI = [
         internalType: "address",
       },
       {
+        name: "token",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+      {
         name: "amount",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+      {
+        name: "newBalance",
         type: "uint256",
         indexed: false,
         internalType: "uint256",
@@ -908,6 +1130,93 @@ export const ContractABI = [
     anonymous: false,
   },
   {
+    type: "event",
+    name: "PrizeWithdrawn",
+    inputs: [
+      {
+        name: "account",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+      {
+        name: "token",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+      {
+        name: "amount",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+      {
+        name: "remainingBalance",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "ProtocolFeeCollected",
+    inputs: [
+      {
+        name: "lobbyId",
+        type: "bytes32",
+        indexed: true,
+        internalType: "bytes32",
+      },
+      {
+        name: "token",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+      {
+        name: "feeAmount",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+      {
+        name: "recipient",
+        type: "address",
+        indexed: true,
+        internalType: "address",
+      },
+      {
+        name: "recipientNewBalance",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "ProtocolFeeUpdated",
+    inputs: [
+      {
+        name: "oldFeeBps",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+      {
+        name: "newFeeBps",
+        type: "uint256",
+        indexed: false,
+        internalType: "uint256",
+      },
+    ],
+    anonymous: false,
+  },
+  {
     type: "error",
     name: "AlreadyParticipant",
     inputs: [],
@@ -929,6 +1238,11 @@ export const ContractABI = [
   },
   {
     type: "error",
+    name: "InsufficientClaimableBalance",
+    inputs: [],
+  },
+  {
+    type: "error",
     name: "InsufficientFunds",
     inputs: [],
   },
@@ -944,12 +1258,12 @@ export const ContractABI = [
   },
   {
     type: "error",
-    name: "InvalidPaymentAsset",
+    name: "InvalidParticipantBounds",
     inputs: [],
   },
   {
     type: "error",
-    name: "InvalidParticipantBounds",
+    name: "InvalidPaymentAsset",
     inputs: [],
   },
   {

@@ -20,6 +20,9 @@ import { ERC20_ABI } from "./constants/ERC20ABI";
 import { bytes32ToString, stringToBytes32 } from "./utilities/ContractHelpers";
 import { WalletManager } from "./Wallet";
 
+// Re-export for convenience
+export { USD_TOKEN_ADDRESS };
+
 // Determine RPC URL from environment or use default
 const RPC_URL =
   typeof process !== "undefined" && process.env?.RPC_URL
@@ -361,7 +364,6 @@ export async function isAddressAllowlisted(
 type TokenMetadata = {
   symbol: string;
   decimals: number;
-  isNative: boolean;
 };
 
 const tokenMetadataCache = new Map<string, TokenMetadata>();
@@ -383,12 +385,6 @@ async function getTokenMetadata(token: `0x${string}`): Promise<TokenMetadata> {
   const cached = tokenMetadataCache.get(cacheKey);
   if (cached) {
     return cached;
-  }
-
-  if (token === ZERO_ADDRESS) {
-    const meta = { symbol: "ETH", decimals: 18, isNative: true } as const;
-    tokenMetadataCache.set(cacheKey, meta);
-    return meta;
   }
 
   let symbol = "ERC20";
@@ -423,7 +419,7 @@ async function getTokenMetadata(token: `0x${string}`): Promise<TokenMetadata> {
     decimals = 18;
   }
 
-  const meta: TokenMetadata = { symbol, decimals, isNative: false };
+  const meta: TokenMetadata = { symbol, decimals };
   tokenMetadataCache.set(cacheKey, meta);
   return meta;
 }
@@ -510,13 +506,9 @@ export async function createLobby(
 
   const stakeToken = USD_TOKEN_ADDRESS;
   const stakeMeta = await getTokenMetadata(stakeToken);
-  const betAmountWei = parseUnits(
-    betAmount,
-    stakeMeta.isNative ? 18 : stakeMeta.decimals,
-  );
+  const betAmountWei = parseUnits(betAmount, stakeMeta.decimals);
   const lobbyIdBytes32 = stringToBytes32(lobbyId);
   const isPublic = lobbyVisibility === "public" ? true : false;
-  const isNativeStake = stakeMeta.isNative;
 
   console.log("Creating lobby on-chain:", {
     lobbyId,
@@ -528,34 +520,20 @@ export async function createLobby(
     wagerSymbol: stakeMeta.symbol,
   });
 
-  if (!isNativeStake) {
-    await ensureErc20Allowance({
-      token: stakeToken,
-      owner: walletManager.address as `0x${string}`,
-      amount: betAmountWei,
-    });
-  }
+  await ensureErc20Allowance({
+    token: stakeToken,
+    owner: walletManager.address as `0x${string}`,
+    amount: betAmountWei,
+  });
 
   let hash: Hash;
   try {
-    const writeParams: {
-      address: `0x${string}`;
-      abi: any;
-      functionName: string;
-      args: any[];
-      value?: bigint;
-    } = {
+    hash = await wagmiWrite({
       address: CONTRACT_ADDRESS,
       abi: CONTRACT_ABI,
       functionName: "createLobby",
       args: [lobbyIdBytes32, betAmountWei, isPublic, stakeToken],
-    };
-
-    if (isNativeStake) {
-      writeParams.value = betAmountWei;
-    }
-
-    hash = await wagmiWrite(writeParams);
+    });
   } catch (error: any) {
     console.error("Failed to create lobby:", error);
 
@@ -635,7 +613,6 @@ export interface LobbyInfo {
   wagerToken: string;
   wagerSymbol: string;
   wagerDecimals: number;
-  isNative: boolean;
   allowlistEnabled: boolean;
   exists: boolean;
   minPlayers: number;
@@ -656,7 +633,6 @@ export interface PublicLobbyInfo {
   wagerToken: string;
   wagerSymbol: string;
   wagerDecimals: number;
-  isNative: boolean;
   allowlistEnabled: boolean;
   minPlayers: number;
   maxPlayers: number;
@@ -719,7 +695,6 @@ export async function getLobbyInfo(lobbyId: string): Promise<LobbyInfo | null> {
       wagerToken: wagerToken,
       wagerSymbol: tokenMeta.symbol,
       wagerDecimals: tokenMeta.decimals,
-      isNative: tokenMeta.isNative,
       allowlistEnabled,
       exists,
       minPlayers: Number(minPlayersRaw),
@@ -812,6 +787,28 @@ export async function joinLobby(
   const tokenMeta = await getTokenMetadata(wagerToken as `0x${string}`);
   const formattedBet = `${formatUnits(betAmount, tokenMeta.decimals)} ${tokenMeta.symbol}`;
 
+  // Check if user has sufficient balance before proceeding
+  const userBalance = (await publicClient.readContract({
+    address: wagerToken as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: "balanceOf",
+    args: [walletManager.address as `0x${string}`],
+  })) as bigint;
+
+  if (userBalance < betAmount) {
+    const shortfall = betAmount - userBalance;
+    const error = new Error(
+      `Insufficient ${tokenMeta.symbol} balance. You need ${formatUnits(betAmount, tokenMeta.decimals)} ${tokenMeta.symbol} but only have ${formatUnits(userBalance, tokenMeta.decimals)} ${tokenMeta.symbol}.`,
+    ) as any;
+    error.code = "INSUFFICIENT_BALANCE";
+    error.required = betAmount;
+    error.current = userBalance;
+    error.shortfall = shortfall;
+    error.tokenSymbol = tokenMeta.symbol;
+    error.decimals = tokenMeta.decimals;
+    throw error;
+  }
+
   console.log("Joining lobby with:", {
     lobbyId,
     lobbyIdBytes32,
@@ -821,33 +818,19 @@ export async function joinLobby(
     allowlistEnabled,
   });
 
-  if (!tokenMeta.isNative) {
-    await ensureErc20Allowance({
-      token: wagerToken as `0x${string}`,
-      owner: walletManager.address as `0x${string}`,
-      amount: betAmount,
-    });
-  }
+  await ensureErc20Allowance({
+    token: wagerToken as `0x${string}`,
+    owner: walletManager.address as `0x${string}`,
+    amount: betAmount,
+  });
 
   try {
-    const writeParams: {
-      address: `0x${string}`;
-      abi: any;
-      functionName: string;
-      args: any[];
-      value?: bigint;
-    } = {
+    const hash = await wagmiWrite({
       address: CONTRACT_ADDRESS,
       abi: CONTRACT_ABI,
       functionName: "joinLobby",
       args: [lobbyIdBytes32],
-    };
-
-    if (tokenMeta.isNative) {
-      writeParams.value = betAmount as any;
-    }
-
-    const hash = await wagmiWrite(writeParams);
+    });
 
     console.log("Successfully joined lobby, transaction hash:", hash);
 
@@ -917,35 +900,21 @@ export async function sponsorTournament(
     throw new Error("Sponsorship amount must be greater than zero.");
   }
 
-  if (!tokenMeta.isNative) {
-    await ensureErc20Allowance({
-      token: lobbyInfo.wagerToken as `0x${string}`,
-      owner: walletManager.address as `0x${string}`,
-      amount: amountWei,
-    });
-  }
+  await ensureErc20Allowance({
+    token: lobbyInfo.wagerToken as `0x${string}`,
+    owner: walletManager.address as `0x${string}`,
+    amount: amountWei,
+  });
 
   const lobbyIdBytes32 = stringToBytes32(lobbyId);
 
   try {
-    const writeParams: {
-      address: `0x${string}`;
-      abi: any;
-      functionName: string;
-      args: any[];
-      value?: bigint;
-    } = {
+    const hash = await wagmiWrite({
       address: CONTRACT_ADDRESS,
       abi: CONTRACT_ABI,
       functionName: "addToPrizePool",
       args: [lobbyIdBytes32, amountWei],
-    };
-
-    if (tokenMeta.isNative) {
-      writeParams.value = amountWei as any;
-    }
-
-    const hash = await wagmiWrite(writeParams);
+    });
 
     return {
       hash,
@@ -982,12 +951,11 @@ export async function sponsorTournament(
   }
 }
 
-export async function claimPrize(
-  params: ClaimPrizeParams,
-): Promise<ClaimPrizeResult> {
-  const { lobbyId } = params;
-
-  // Check if wallet is connected via Privy
+export async function withdrawWinnings(token: `0x${string}`): Promise<{
+  hash: Hash;
+  amount: bigint;
+  tokenSymbol: string;
+}> {
   const walletManager = WalletManager.getInstance();
   if (!walletManager.authenticated || !walletManager.address) {
     throw new Error(
@@ -995,47 +963,95 @@ export async function claimPrize(
     );
   }
 
-  const lobbyIdBytes32 = stringToBytes32(lobbyId);
+  const claimable = await getClaimableBalance(
+    walletManager.address as `0x${string}`,
+    token,
+  );
 
-  console.log("Claiming prize for lobby:", {
-    lobbyId,
-    lobbyIdBytes32,
-    playerAddress: walletManager.address,
+  if (claimable === 0n) {
+    throw new Error("No winnings available to withdraw.");
+  }
+
+  const tokenMeta = await getTokenMetadata(token);
+
+  console.log("Withdrawing winnings:", {
+    token,
+    claimable: claimable.toString(),
+    formatted: formatUnits(claimable, tokenMeta.decimals),
+    symbol: tokenMeta.symbol,
   });
 
   try {
     const hash = await wagmiWrite({
       address: CONTRACT_ADDRESS,
       abi: CONTRACT_ABI,
-      functionName: "claimPrize",
-      args: [lobbyIdBytes32],
-      // Let wallet auto-estimate gas
+      functionName: "withdrawAll",
+      args: [token],
     });
 
-    console.log("Successfully claimed prize, transaction hash:", hash);
+    console.log("Successfully withdrew winnings, transaction hash:", hash);
 
     return {
       hash,
-      lobbyId,
-      playerAddress: walletManager.address!,
+      amount: claimable,
+      tokenSymbol: tokenMeta.symbol,
     };
   } catch (error: any) {
-    console.error("Failed to claim prize:", error);
+    console.error("Failed to withdraw winnings:", error);
 
-    // Handle specific contract errors
-    if (error.message.includes("NotWinner")) {
-      throw new Error("You are not the winner of this lobby.");
-    } else if (error.message.includes("GameNotFinished")) {
-      throw new Error("The game has not finished yet.");
-    } else if (error.message.includes("PrizeAlreadyClaimed")) {
-      throw new Error("Prize has already been claimed.");
-    } else if (error.message.includes("User rejected")) {
-      throw new Error("Transaction was cancelled by user.");
-    } else {
-      throw new Error(
-        `Failed to claim prize: ${error.message ?? "Unknown error"}`,
-      );
+    if (error.message?.includes("InsufficientClaimableBalance")) {
+      throw new Error("No winnings available to withdraw.");
     }
+
+    if (error.message?.includes("User rejected")) {
+      throw new Error("Transaction was cancelled by user.");
+    }
+
+    throw new Error(
+      `Failed to withdraw winnings: ${error.message ?? "Unknown error"}`,
+    );
+  }
+}
+
+export async function getClaimableBalance(
+  account: `0x${string}`,
+  token: `0x${string}`,
+): Promise<bigint> {
+  try {
+    const balance = (await publicClient.readContract({
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "claimableTokenBalances",
+      args: [account, token],
+    })) as bigint;
+
+    return balance;
+  } catch (error) {
+    console.error("Error fetching claimable balance:", error);
+    return 0n;
+  }
+}
+
+export async function getWinners(lobbyId: string): Promise<{
+  winners: `0x${string}`[];
+  payouts: bigint[];
+} | null> {
+  try {
+    const lobbyIdBytes32 = stringToBytes32(lobbyId);
+    const result = (await publicClient.readContract({
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "getWinners",
+      args: [lobbyIdBytes32],
+    })) as [`0x${string}`[], bigint[]];
+
+    return {
+      winners: result[0],
+      payouts: result[1],
+    };
+  } catch (error) {
+    console.error("Error fetching winners:", error);
+    return null;
   }
 }
 
@@ -1681,7 +1697,6 @@ export async function getPublicLobbyDetails(
             wagerToken,
             wagerSymbol: tokenMeta.symbol,
             wagerDecimals: tokenMeta.decimals,
-            isNative: tokenMeta.isNative,
             allowlistEnabled,
             minPlayers: Number(minPlayersRaw),
             maxPlayers: Number(maxPlayersRaw),
