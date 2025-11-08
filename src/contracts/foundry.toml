@@ -8,4 +8,18 @@ remappings = [
     "forge-std/=lib/forge-std/src/"
 ]
 
+ignored_paths = [
+    "lib/openzeppelin-contracts/certora",
+    "lib/openzeppelin-contracts/docs",
+    "lib/openzeppelin-contracts/hardhat",
+    "lib/openzeppelin-contracts/scripts",
+    "lib/openzeppelin-contracts/test",
+    "lib/openzeppelin-contracts/lib/halmos-cheatcodes",
+    "lib/openzeppelin-contracts/lib/erc4626-tests"
+]
+
+optimizer = true
+optimizer_runs = 200
+via_ir = true
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

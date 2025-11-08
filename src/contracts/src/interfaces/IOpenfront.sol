@@ -54,6 +54,8 @@ interface IOpenfront {
     error InvalidAmount();
     /// @notice Thrown when native/erc20 payment mismatches lobby configuration
     error InvalidPaymentAsset();
+    /// @notice Thrown when attempting to withdraw more than the caller has accrued
+    error InsufficientClaimableBalance();
     /// @notice Thrown when participant min/max bounds are invalid
     error InvalidParticipantBounds();
     /// @notice Thrown when attempting to eject the lobby host
@@ -82,19 +84,59 @@ interface IOpenfront {
     event GameStarted(bytes32 indexed lobbyId);
 
     /**
-     * @notice Emitted when the game server declares a winner.
+     * @notice Emitted when the game server declares winner(s) for a lobby.
      * @param lobbyId Unique lobby identifier.
-     * @param winner Address of the winning participant.
+     * @param primaryWinner The first winner in the declared winners list (for backwards compatibility).
      */
-    event GameFinished(bytes32 indexed lobbyId, address indexed winner);
+    event GameFinished(bytes32 indexed lobbyId, address indexed primaryWinner);
 
     /**
-     * @notice Emitted when the winner claims the prize.
+     * @notice Emitted when the game server declares winner(s) for a lobby with their payout amounts.
      * @param lobbyId Unique lobby identifier.
-     * @param winner Address of the winner who received the prize.
-     * @param amount Amount of ETH transferred to the winner.
+     * @param winners Array of winner addresses.
+     * @param payouts Array of payout amounts (in the lobby's stake token) credited to each winner.
+     * @param stakeToken Address of the stake token.
+     * @param totalPrize Total amount distributed for the lobby.
+     * @param feeAmount Amount deducted as protocol fee.
      */
-    event PrizeClaimed(bytes32 indexed lobbyId, address indexed winner, uint256 amount);
+    event GameFinishedMulti(
+        bytes32 indexed lobbyId,
+        address[] winners,
+        uint256[] payouts,
+        address stakeToken,
+        uint256 totalPrize,
+        uint256 feeAmount
+    );
+
+    /**
+     * @notice Emitted whenever a winner's accrued prize balance increases.
+     * @param lobbyId Unique lobby identifier.
+     * @param winner Address of the winner whose balance was increased.
+     * @param token Address of the prize token (zero for native).
+     * @param amount Amount credited for this lobby distribution.
+     * @param newBalance New total claimable balance for the winner/token pair.
+     */
+    event PrizeBalanceIncreased(
+        bytes32 indexed lobbyId,
+        address indexed winner,
+        address indexed token,
+        uint256 amount,
+        uint256 newBalance
+    );
+
+    /**
+     * @notice Emitted when a user withdraws accrued prize funds.
+     * @param account Address performing the withdrawal.
+     * @param token Address of the token withdrawn (zero for native).
+     * @param amount Amount withdrawn.
+     * @param remainingBalance Remaining claimable balance for the user after withdrawal.
+     */
+    event PrizeWithdrawn(
+        address indexed account,
+        address indexed token,
+        uint256 amount,
+        uint256 remainingBalance
+    );
 
     /**
      * @notice Emitted when the owner updates the game server address.
@@ -139,24 +181,54 @@ interface IOpenfront {
      */
     event AllowlistUpdated(bytes32 indexed lobbyId, address indexed account, bool allowed);
 
+    /**
+     * @notice Emitted when a protocol fee is collected from a lobby's prize pool.
+     * @param lobbyId Unique lobby identifier.
+     * @param token Address of the ERC20 token.
+     * @param feeAmount Amount deducted as protocol fee.
+     * @param recipient Address receiving the fee.
+     * @param recipientNewBalance New total claimable balance for the recipient.
+     */
+    event ProtocolFeeCollected(
+        bytes32 indexed lobbyId,
+        address indexed token,
+        uint256 feeAmount,
+        address indexed recipient,
+        uint256 recipientNewBalance
+    );
+
+    /**
+     * @notice Emitted when the protocol fee percentage is updated.
+     * @param oldFeeBps Previous fee in basis points.
+     * @param newFeeBps New fee in basis points.
+     */
+    event ProtocolFeeUpdated(uint256 oldFeeBps, uint256 newFeeBps);
+
+    /**
+     * @notice Emitted when the fee recipient address is updated.
+     * @param oldRecipient Previous fee recipient.
+     * @param newRecipient New fee recipient.
+     */
+    event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
+
     // ============ External Functions ============
     /**
      * @notice Create a new lobby and stake the host's bet.
-     * @dev `msg.value` must equal `betAmount`. The host is added as the first
-     *      participant and the lobby status is set to Created.
+     * @dev The stake token must be a non-zero ERC20. Transfers `betAmount` tokens
+     *      from the host into the contract. No ETH should be sent.
      * @param lobbyId Unique identifier for the lobby (frontend-generated).
-     * @param betAmount Exact ETH amount each participant must provide to join.
+     * @param betAmount Exact token amount each participant must provide to join.
      * @param isPublic If true, the lobby is discoverable via public listings.
      */
-    function createLobby(bytes32 lobbyId, uint256 betAmount, bool isPublic, address stakeToken) external payable;
+    function createLobby(bytes32 lobbyId, uint256 betAmount, bool isPublic, address stakeToken) external;
 
     /**
      * @notice Join an existing lobby by paying the exact bet amount.
-     * @dev Reverts if the lobby does not exist, has started, or the caller
-     *      already joined. `msg.value` must equal the lobby's bet amount.
+     * @dev Reverts if the lobby does not exist, has started, or the caller already joined.
+     *      Transfers `betAmount` of the configured ERC20 from the caller. No ETH should be sent.
      * @param lobbyId Unique identifier of the lobby to join.
      */
-    function joinLobby(bytes32 lobbyId) external payable;
+    function joinLobby(bytes32 lobbyId) external;
 
     /**
      * @notice Start a lobby so that no new participants can join.
@@ -166,21 +238,48 @@ interface IOpenfront {
     function startGame(bytes32 lobbyId) external;
 
     /**
-     * @notice Declare the winner of an in-progress lobby.
-     * @dev Only callable by the authorized game server. The `winner` must be a
-     *      participant in the lobby. Sets status to Finished on success.
+     * @notice Declare winner(s) of an in-progress lobby using optional payout weights.
+     * @dev Only callable by the authorized game server. All winners must be participants.
+     *      If `payoutWeights` is empty, the prize pool is split evenly. Otherwise, the
+     *      prize pool is distributed in proportion to each weight. Rounding dust is
+     *      assigned to the final winner in the list.
+     * @param lobbyId Unique identifier of the lobby.
+     * @param winners Array of winner addresses.
+     * @param payoutWeights Optional array of relative payout weights corresponding to `winners`.
+     */
+    function declareWinners(bytes32 lobbyId, address[] calldata winners, uint256[] calldata payoutWeights) external;
+
+    /**
+     * @notice Convenience helper to declare a single winner (maintained for backwards compatibility).
+     * @dev Delegates to `declareWinners`.
      * @param lobbyId Unique identifier of the lobby.
      * @param winner Address of the participant who won the game.
      */
     function declareWinner(bytes32 lobbyId, address winner) external;
 
     /**
-     * @notice Claim the prize for a finished lobby.
-     * @dev Only the recorded winner can claim. Transfers the entire prize pool
-     *      to the winner and finalizes the lobby.
-     * @param lobbyId Unique identifier of the lobby.
+     * @notice Withdraw accrued prize funds for the specified token.
+     * @dev Reverts if amount is zero or exceeds the caller's claimable balance.
+     * @param token Address of the ERC20 token to withdraw.
+     * @param amount Amount to withdraw.
+     * @return withdrawn The actual amount withdrawn.
      */
-    function claimPrize(bytes32 lobbyId) external;
+    function withdraw(address token, uint256 amount) external returns (uint256 withdrawn);
+
+    /**
+     * @notice Withdraw the caller's entire accrued prize balance for the specified token.
+     * @param token Address of the ERC20 token to withdraw.
+     * @return withdrawn The total amount withdrawn.
+     */
+    function withdrawAll(address token) external returns (uint256 withdrawn);
+
+    /**
+     * @notice Get the winners and their payout amounts for a lobby.
+     * @param lobbyId Unique lobby identifier.
+     * @return winners Array of winner addresses.
+     * @return payouts Array of payout amounts credited to each winner.
+     */
+    function getWinners(bytes32 lobbyId) external view returns (address[] memory winners, uint256[] memory payouts);
 
     /**
      * @notice Cancel a lobby before it starts and refund all participants.
@@ -200,11 +299,11 @@ interface IOpenfront {
 
     /**
      * @notice Sponsor a lobby by contributing additional funds to the prize pool.
-     * @dev Accepts either native currency or the configured ERC20 stake token.
+     * @dev Transfers the configured ERC20 stake token from the sponsor. No ETH should be sent.
      * @param lobbyId Unique identifier of the lobby to sponsor.
-     * @param amount Amount being contributed (ignored for native; msg.value is used).
+     * @param amount Amount of tokens being contributed.
      */
-    function addToPrizePool(bytes32 lobbyId, uint256 amount) external payable;
+    function addToPrizePool(bytes32 lobbyId, uint256 amount) external;
 
     /**
      * @notice Read a lobby's details.
@@ -290,6 +389,20 @@ interface IOpenfront {
      * @param _gameServer Address of the new game server.
      */
     function setGameServer(address _gameServer) external;
+
+    /**
+     * @notice Set the protocol fee percentage.
+     * @dev Only callable by contract owner. Fee is in basis points (0-10000).
+     * @param feeBps Fee percentage in basis points (e.g., 500 = 5%).
+     */
+    function setProtocolFee(uint256 feeBps) external;
+
+    /**
+     * @notice Set the address that receives protocol fees.
+     * @dev Only callable by contract owner.
+     * @param recipient Address to receive fees.
+     */
+    function setFeeRecipient(address recipient) external;
 
     /**
      * @notice Set a maximum participant limit for a lobby.
