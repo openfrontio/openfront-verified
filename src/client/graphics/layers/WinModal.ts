@@ -8,7 +8,9 @@ import { GameView } from "../../../core/game/GameView";
 import {
   GameStatus,
   USD_TOKEN_ADDRESS,
+  getClaimableBalance,
   getLobbyInfo,
+  getWinners,
   withdrawWinnings,
 } from "../../Contract";
 import { SendWinnerEvent } from "../../Transport";
@@ -242,6 +244,11 @@ export class WinModal extends LitElement implements Layer {
       return;
     }
 
+    if (!this.checkingClaim) {
+      this.requestUpdate();
+      return;
+    }
+
     // Otherwise, poll every 2 seconds for up to 30 seconds
     let attempts = 0;
     const maxAttempts = 15;
@@ -280,7 +287,9 @@ export class WinModal extends LitElement implements Layer {
     try {
       const lobbyId = this.game.gameID();
       const info = await getLobbyInfo(lobbyId);
-      const myAddr = WalletManager.getInstance().address?.toLowerCase();
+      const walletManager = WalletManager.getInstance();
+      const accountAddress = walletManager.address as `0x${string}` | undefined;
+      const myAddr = accountAddress?.toLowerCase();
 
       console.log(`[WinModal] Checking claim eligibility:`, {
         lobbyId,
@@ -297,9 +306,9 @@ export class WinModal extends LitElement implements Layer {
         console.log(`[WinModal] ℹ️ No on-chain lobby found (not a tournament)`);
         this.isTournament = false;
         this.showClaimButton = false;
-        this.checkingClaim = false;
         this.claimMsg =
           "This was a regular game, not a tournament. No prize to claim.";
+        this.stopClaimCheck();
         this.requestUpdate();
         return;
       }
@@ -308,56 +317,80 @@ export class WinModal extends LitElement implements Layer {
       this.isTournament = true;
 
       // Check if you have a wallet connected
-      if (!myAddr) {
+      if (!accountAddress) {
         console.log(`[WinModal] ⚠️ No wallet connected`);
         this.claimMsg = "Connect your wallet to claim prizes";
         this.showClaimButton = false;
-        this.checkingClaim = false;
+        this.stopClaimCheck();
         this.requestUpdate();
         return;
       }
 
-      const isEligible = Boolean(
-        info.status === GameStatus.Finished &&
-          info.winner &&
-          info.winner.toLowerCase() !==
-            "0x0000000000000000000000000000000000000000" &&
-          info.winner.toLowerCase() === myAddr,
-      );
+      const winnersInfo = await getWinners(lobbyId);
+      const winnerAddressesLower =
+        winnersInfo?.winners.map((addr) => addr.toLowerCase()) ?? [];
+      const isListedWinner =
+        myAddr !== undefined && winnerAddressesLower.includes(myAddr);
+
+      let claimableBalance = 0n;
+      if (info.status === GameStatus.Finished || isListedWinner) {
+        claimableBalance = await getClaimableBalance(
+          accountAddress,
+          USD_TOKEN_ADDRESS,
+        );
+      }
+
+      const hasClaimable = claimableBalance > 0n;
+      const wasShowingClaim = this.showClaimButton;
+      const isEligible =
+        info.status === GameStatus.Finished && isListedWinner && hasClaimable;
 
       if (isEligible && !this.showClaimButton) {
         console.log(
           `[WinModal] ✅ Claim button now available! Winner: ${info.winner}`,
         );
       } else if (!isEligible) {
-        const reasons = {
+        console.log(`[WinModal] ❌ Not eligible yet. Reason:`, {
           hasInfo: !!info,
           exists: info.exists,
           isFinished: info.status === GameStatus.Finished,
           statusName: GameStatus[info.status],
-          hasWinner: !!info.winner,
-          isNotZero:
-            info.winner?.toLowerCase() !==
-            "0x0000000000000000000000000000000000000000",
-          hasWallet: !!myAddr,
-          addressMatch: info.winner?.toLowerCase() === myAddr,
-        };
-        console.log(`[WinModal] ❌ Not eligible yet. Reason:`, reasons);
-
-        // Provide specific feedback
-        if (info.status === GameStatus.InProgress) {
-          this.claimMsg = "⏳ Waiting for server to declare winner on-chain...";
-        } else if (info.status === GameStatus.Created) {
-          this.claimMsg = "Game hasn't started on-chain yet";
-        } else if (info.status === GameStatus.Claimed) {
-          this.claimMsg = "Prize already claimed";
-        } else if (info.winner?.toLowerCase() !== myAddr) {
-          this.claimMsg = "You are not the winner of this tournament";
-        }
-        this.requestUpdate();
+          winners: winnersInfo?.winners?.length ?? 0,
+          isListedWinner,
+          hasClaimable,
+          claimableBalance: claimableBalance.toString(),
+        });
       }
 
       this.showClaimButton = isEligible;
+
+      if (isEligible && !wasShowingClaim) {
+        this.claimMsg = "";
+        this.stopClaimCheck();
+        this.requestUpdate();
+        return;
+      }
+
+      if (info.status === GameStatus.Finished && !isListedWinner) {
+        this.claimMsg = "You are not the winner of this tournament";
+        this.stopClaimCheck();
+        this.requestUpdate();
+        return;
+      }
+
+      // Provide specific feedback while we wait
+      if (info.status === GameStatus.InProgress) {
+        this.claimMsg = "⏳ Waiting for server to declare winner on-chain...";
+      } else if (info.status === GameStatus.Created) {
+        this.claimMsg = "Game hasn't started on-chain yet";
+      } else if (info.status === GameStatus.Claimed) {
+        this.claimMsg = "Prize already claimed";
+        this.stopClaimCheck();
+      } else if (info.status === GameStatus.Finished && isListedWinner) {
+        this.claimMsg =
+          "⏳ Waiting for the tournament payout to settle on-chain...";
+      }
+
       this.requestUpdate();
     } catch (e) {
       console.error(`[WinModal] Error checking claim eligibility:`, e);
